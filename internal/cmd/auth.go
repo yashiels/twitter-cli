@@ -225,7 +225,7 @@ func verifyAndGetIdentity(client *api.Client, twidUserID string) (*identityResul
 	// Fall back to confirming the API works by checking a known user.
 	_, ferr := client.GetUserByScreenName("twitter")
 	if ferr != nil {
-		return nil, fmt.Errorf("API verification failed: %w", err)
+		return nil, fmt.Errorf("API verification failed: %w", ferr)
 	}
 	return &identityResult{}, nil // credentials work but identity unknown
 }
