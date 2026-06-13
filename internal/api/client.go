@@ -57,7 +57,17 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	var err error
 
 	// Retry up to 2 times on rate limit (429).
+	// Capture GetBody so POST bodies can be reset between retries.
+	getBody := req.GetBody
 	for attempt := 0; attempt < 3; attempt++ {
+		// Reset body on retries — after the first Do() the transport drains it.
+		if attempt > 0 && getBody != nil {
+			newBody, bodyErr := getBody()
+			if bodyErr != nil {
+				return nil, fmt.Errorf("reset request body: %w", bodyErr)
+			}
+			req.Body = newBody
+		}
 		resp, err = c.http.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("http request: %w", err)
@@ -121,11 +131,4 @@ func parseResetTime(s string) time.Time {
 		return time.Now().Add(60 * time.Second)
 	}
 	return time.Unix(ts, 0)
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
