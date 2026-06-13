@@ -170,11 +170,7 @@ func (c *Client) restGet(path string, params url.Values) (json.RawMessage, error
 		return nil, fmt.Errorf("read REST response: %w", err)
 	}
 	if os.Getenv("DEBUG_TWT") != "" {
-		fmt.Fprintf(os.Stderr, "DEBUG REST %s HTTP %d headers: Content-Encoding=%q Content-Type=%q response (%d bytes): %s\n",
-			path, resp.StatusCode,
-			resp.Header.Get("Content-Encoding"),
-			resp.Header.Get("Content-Type"),
-			len(bodyBytes), string(bodyBytes))
+		fmt.Fprintf(os.Stderr, "DEBUG REST %s HTTP %d (%d bytes): %s\n", path, resp.StatusCode, len(bodyBytes), string(bodyBytes))
 	}
 	// Twitter occasionally returns an empty body (200 + content-length: 0) for
 	// endpoints that have no results (e.g. mentions_timeline for a new account).
