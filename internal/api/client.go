@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -144,8 +145,19 @@ func (c *Client) restGet(path string, params url.Values) (json.RawMessage, error
 		return nil, fmt.Errorf("API error: HTTP %d", resp.StatusCode)
 	}
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	// Twitter occasionally returns HTTP 200 with an empty body (content-length: 0)
+	// for endpoints with no results (e.g. mentions_timeline on a new account).
+	// Return an empty JSON array so callers can treat it as zero results.
+	if len(bodyBytes) == 0 {
+		return json.RawMessage("[]"), nil
+	}
+
 	var raw json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
