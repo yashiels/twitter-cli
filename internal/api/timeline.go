@@ -45,14 +45,10 @@ func (c *Client) GetHomeTimeline(limit int, latest bool) ([]*types.Tweet, error)
 		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
 	}
 
-	// Navigate: data -> home_timeline_urt -> instructions
-	instructionsRaw, err := getNestedJSON(raw, "data", "home_timeline_urt", "instructions")
+	// Navigate: data -> timeline_response -> timeline -> instructions (APK schema)
+	instructionsRaw, err := getNestedJSON(raw, "data", "timeline_response", "timeline", "instructions")
 	if err != nil {
-		// Try alternate nesting some versions use
-		instructionsRaw, err = getNestedJSON(raw, "data", "home_timeline", "home_timeline_urt", "instructions")
-		if err != nil {
-			return nil, fmt.Errorf("navigate home timeline: %w", err)
-		}
+		return nil, fmt.Errorf("navigate home timeline: %w", err)
 	}
 
 	return parseTimelineInstructions(instructionsRaw)

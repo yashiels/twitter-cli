@@ -40,10 +40,10 @@ func (c *Client) SearchTimeline(query string, limit int, searchUsers bool) (*Sea
 	}
 
 	vars := map[string]any{
-		"rawQuery":    query,
-		"count":       limit,
-		"querySource": "typed_query",
-		"product":     product,
+		"query":         query,
+		"count":         limit,
+		"query_source":  "typed_query",
+		"timeline_type": product,
 	}
 
 	raw, err := c.graphqlGet(searchQueryID, searchOperation, vars, searchFeatures)
@@ -51,8 +51,8 @@ func (c *Client) SearchTimeline(query string, limit int, searchUsers bool) (*Sea
 		return nil, fmt.Errorf("SearchTimeline: %w", err)
 	}
 
-	// Navigate: data -> search_by_raw_query -> search_timeline -> timeline -> instructions
-	instructionsRaw, err := getNestedJSON(raw, "data", "search_by_raw_query", "search_timeline", "timeline", "instructions")
+	// Navigate: data -> search -> timeline_response -> timeline -> instructions (APK schema)
+	instructionsRaw, err := getNestedJSON(raw, "data", "search", "timeline_response", "timeline", "instructions")
 	if err != nil {
 		return nil, fmt.Errorf("navigate search timeline: %w", err)
 	}

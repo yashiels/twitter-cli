@@ -30,8 +30,8 @@ func (c *Client) GetTweetByID(tweetID string) (*types.Tweet, error) {
 		return nil, fmt.Errorf("GetTweetByID: %w", err)
 	}
 
-	// Navigate: data -> tweet_result -> result
-	resultRaw, err := getNestedJSON(raw, "data", "tweet_result", "result")
+	// Navigate: data -> tweet_result_by_rest_id -> result (APK schema)
+	resultRaw, err := getNestedJSON(raw, "data", "tweet_result_by_rest_id", "result")
 	if err != nil {
 		return nil, fmt.Errorf("navigate tweet result: %w", err)
 	}
