@@ -1,78 +1,62 @@
-# AGENTS.md — twt (twitter-cli)
+# AGENTS.md
 
-## Project Purpose
-`twt` is a Go CLI for X/Twitter built on the **private GraphQL API**, reverse-engineered from the Android APK. It extracts credentials directly from Chrome on macOS (no developer API key needed).
+Telegraph style. Imperative. Min tokens.
 
-## Module
-`github.com/yashiels/twitter-cli`
+## Project
 
-## Binary
-`twt`
+- `twt` — Go CLI for X/Twitter private GraphQL API. No developer API key.
+- Module: `github.com/yashiels/twitter-cli`
+- Binary: `twt`
+- License: MIT
 
-## Key Commands
+## Build / Test / Lint
+
 ```sh
-go build -o twt ./cmd/twt   # build
-go test ./...                # test
-golangci-lint run --timeout=5m   # lint
+go build -o twt ./cmd/twt
+go test ./...
+golangci-lint run --timeout=5m
 ```
+
+Pre-commit hook runs gofumpt + goimports + go vet + golangci-lint. Activate: `make hooks`.
 
 ## Architecture
 
 ```
-cmd/twt/          — Cobra entry point (main.go)
-internal/
-  api/            — HTTP client, GraphQL request/response, rate limiting
-  auth/           — Chrome cookie extraction (macOS Keychain), credential store
-  cmd/            — Cobra sub-commands (auth, user, tweets, …)
-  output/         — Formatters: pretty, --json, --plain
-  types/          — Domain structs (User, Tweet, Credentials, …)
+cmd/twt/main.go        — Cobra root, command wiring
+internal/api/          — HTTP client, GraphQL GET/POST, rate limiter, all endpoint methods
+internal/auth/         — Chrome cookie extraction (macOS Keychain + AES-128-CBC), credential store
+internal/cmd/          — Cobra commands (auth, user, tweets, tweet, follow, like, search, timeline)
+internal/output/       — Human / JSON / plain formatters, color, TTY detection
+internal/types/        — User, Tweet domain structs
 ```
 
-### Package responsibilities
+## API Contract
 
-| Package | Role |
-|---------|------|
-| `internal/api` | Builds and fires GraphQL requests; handles jitter, 429 retry, and x-rate-limit-* headers |
-| `internal/auth` | Decrypts Chrome's `Cookies` SQLite DB via macOS Keychain; stores `~/.config/twt/credentials.json` |
-| `internal/cmd` | Cobra command tree; delegates to api + output |
-| `internal/output` | ANSI-rich table, `--json` (raw struct), `--plain` (tab-separated) |
-| `internal/types` | Shared value types — no external dependencies |
-
-## Auth Model
-- **Primary**: auto-extract `auth_token` + `ct0` from Chrome profile on macOS (Keychain decryption)
-- **Fallback**: `twt auth login --manual` — paste tokens directly
-- **Storage**: `~/.config/twt/credentials.json` (mode `0600`)
-- **Env override**: `TWL_AUTH_TOKEN`, `TWL_CT0`
-
-## API
-- **Base URL**: `https://api.twitter.com/graphql/{queryId}/{operationName}`
-- All reads are GET; all writes are POST with `application/json` body
-- Required headers mimic the Android APK: `Authorization: Bearer <bearer>`, `x-twitter-auth-type`, `x-twitter-client-language`, etc.
+- Base: `https://api.twitter.com/graphql/{queryId}/{operationName}`
+- Auth: `auth_token` + `ct0` cookies from Chrome, NOT OAuth app credentials
+- Reads: GET with `variables` + `features` query params
+- Writes: POST with JSON body `{"variables": ..., "features": ...}`
+- User-Agent: `TwitterAndroid/11.99.0`
+- APK schema, NOT web schema. `legacy` is mostly empty. Use `details.*`, `counts.*`, `relationship_counts.*`, `tweet_counts.*`
 
 ## Rate Limiting
-- 2–5 s random jitter between requests
-- Auto-retry on HTTP 429 (up to 2 retries)
-- Respects `x-rate-limit-remaining` / `x-rate-limit-reset`
-- Warns to stderr when ≤ 10 requests remain
-- Gives up if the reset window is > 5 minutes
 
-## Response Parsing
-Responses follow the APK schema:
-- User stats in `relationship_counts` / `tweet_counts`
-- User detail fields under `details.*`
-- Tweets in `timeline_v2.timeline.instructions[].entries[].content.itemContent.tweet_results.result`
+- 2–5s random jitter before every request
+- Auto-retry on 429 with `x-rate-limit-reset` wait (up to 2 retries)
+- Warn stderr when ≤10 requests remaining
+- Give up if reset >5 min away
 
-## Commit Rules
-- Follow **Conventional Commits**: `type(scope): summary #issue`
-- Every commit body must include the trailer:
-  ```
-  Co-authored-by: Yashiel Sookdeo <yashiel@skyner.co.za>
-  ```
-- **Never commit** secrets, API keys, bearer tokens, `credentials.json`, or cookie database files.
-- Stage specific files only — never `git add .`
+## Commits
 
-## What Not To Do
-- Do not add a Twitter developer API key or OAuth 2.0 flow — this tool uses the private GraphQL API.
-- Do not modify the Chrome Cookies DB directly.
-- Do not introduce CGO dependencies beyond what is already in go.mod.
-- Do not silently swallow 429 errors — surface them via the rate-limit warning path.
+- Conventional Commits: `type(scope): summary`
+- Trailer required: `Co-authored-by: Yashiel Sookdeo <yashiel@skyner.co.za>`
+- Stage specific files. Never `git add .`
+- Run `make lint` before committing if hooks aren't active
+
+## Prohibited
+
+- No Twitter developer API keys or OAuth 2.0 flows
+- No CGO dependencies beyond existing go.mod
+- No secrets, tokens, or cookie data in commits
+- No modifying Chrome's Cookies DB
+- No silently swallowing 429 errors
