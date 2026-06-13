@@ -1,11 +1,16 @@
 # Build output
 /twt
 *.exe
+dist/
 
 # Go
 *.test
 *.out
+coverage.*
 vendor/
+
+# Env
+.env
 
 # macOS
 .DS_Store

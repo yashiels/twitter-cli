@@ -1,0 +1,35 @@
+version: 2
+project_name: twitter-cli
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: twt
+    main: ./cmd/twt/main.go
+    binary: twt
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - linux_amd64
+      - linux_arm64
+
+archives:
+  - id: default
+    ids:
+      - twt
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

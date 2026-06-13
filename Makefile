@@ -1,7 +1,7 @@
 BINARY := twt
 CMD    := ./cmd/twt
 
-.PHONY: build clean install lint vet
+.PHONY: build clean install lint fmt vet test
 
 build:
 	go build -ldflags "-s -w" -o $(BINARY) $(CMD)
@@ -13,7 +13,10 @@ install:
 	go install $(CMD)
 
 lint:
-	go vet ./...
+	golangci-lint run --timeout=5m
+
+fmt:
+	golangci-lint run --fix --timeout=5m
 
 vet:
 	go vet ./...
