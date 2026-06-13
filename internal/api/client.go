@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -141,6 +142,10 @@ func parseResetTime(s string) time.Time {
 func (c *Client) restGet(path string, params url.Values) (json.RawMessage, error) {
 	fullURL := "https://api.twitter.com" + path + "?" + params.Encode()
 
+	if os.Getenv("DEBUG_TWT") != "" {
+		fmt.Fprintf(os.Stderr, "DEBUG REST GET %s\n", fullURL)
+	}
+
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build REST request: %w", err)
@@ -153,11 +158,33 @@ func (c *Client) restGet(path string, params url.Values) (json.RawMessage, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if os.Getenv("DEBUG_TWT") != "" {
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Fprintf(os.Stderr, "DEBUG REST HTTP %d for %s: %s\n", resp.StatusCode, path, string(body))
+		}
 		return nil, fmt.Errorf("REST API error: HTTP %d", resp.StatusCode)
 	}
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read REST response: %w", err)
+	}
+	if os.Getenv("DEBUG_TWT") != "" {
+		fmt.Fprintf(os.Stderr, "DEBUG REST %s HTTP %d headers: Content-Encoding=%q Content-Type=%q response (%d bytes): %s\n",
+			path, resp.StatusCode,
+			resp.Header.Get("Content-Encoding"),
+			resp.Header.Get("Content-Type"),
+			len(bodyBytes), string(bodyBytes))
+	}
+	// Twitter occasionally returns an empty body (200 + content-length: 0) for
+	// endpoints that have no results (e.g. mentions_timeline for a new account).
+	// Return an empty JSON array so callers can treat it as zero results.
+	if len(bodyBytes) == 0 {
+		return json.RawMessage("[]"), nil
+	}
+
 	var raw json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
 		return nil, fmt.Errorf("decode REST response: %w", err)
 	}
 

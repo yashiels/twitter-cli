@@ -28,15 +28,11 @@ func NewMentionsCmd(opts *output.Options) *cobra.Command {
 				return err
 			}
 
-			if creds.UserID == "" {
-				return fmt.Errorf("user ID not stored — run: twt auth login to refresh credentials")
-			}
-
 			client := api.NewClient(creds)
 			p := output.New(opts)
 
 			p.Infof("Fetching mentions...")
-			tweets, err := client.GetMentions(creds.UserID, limit)
+			tweets, err := client.GetMentions(limit)
 			if err != nil {
 				return fmt.Errorf("mentions: %w", err)
 			}

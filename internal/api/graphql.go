@@ -105,6 +105,10 @@ func (c *Client) graphqlPost(queryID, operationName string, variables, features 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if os.Getenv("DEBUG_TWT") != "" {
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Fprintf(os.Stderr, "DEBUG HTTP %d for POST %s: %s\n", resp.StatusCode, operationName, string(body))
+		}
 		return nil, fmt.Errorf("API error: HTTP %d", resp.StatusCode)
 	}
 
