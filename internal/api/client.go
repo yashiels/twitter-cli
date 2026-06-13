@@ -2,9 +2,9 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -39,7 +39,7 @@ func NewClient(creds *auth.Credentials) *Client {
 }
 
 // do executes an HTTP request with the required Twitter auth headers.
-// It handles rate limiting automatically.
+// It adds jitter between requests and handles rate limiting with auto-retry.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+BearerToken)
 	req.Header.Set("Cookie", fmt.Sprintf("auth_token=%s; ct0=%s", c.creds.AuthToken, c.creds.CT0))
@@ -50,19 +50,42 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	req.Header.Set("x-twitter-active-user", "yes")
 	req.Header.Set("x-twitter-auth-type", "OAuth2Session")
 
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
+	// Random jitter before each request to mimic human behavior.
+	jitter()
+
+	var resp *http.Response
+	var err error
+
+	// Retry up to 2 times on rate limit (429).
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err = c.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("http request: %w", err)
+		}
+
+		logRateLimit(resp)
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+
+		// Rate limited — wait until the reset window.
+		resp.Body.Close()
+		resetTime := parseResetTime(resp.Header.Get("x-rate-limit-reset"))
+		wait := time.Until(resetTime)
+		if wait <= 0 {
+			wait = time.Duration(10*(attempt+1)) * time.Second
+		}
+		if wait > 5*time.Minute {
+			return nil, fmt.Errorf("rate limited — reset too far away (%s), giving up", wait.Round(time.Second))
+		}
+		fmt.Fprintf(os.Stderr, "⏳ Rate limited, waiting %s...\n", wait.Round(time.Second))
+		time.Sleep(wait)
 	}
 
-	logRateLimit(resp)
-
-	if resp.StatusCode == http.StatusTooManyRequests {
-		resetHeader := resp.Header.Get("x-rate-limit-reset")
-		resetTime := parseResetTime(resetHeader)
-		waitSec := max(int(time.Until(resetTime).Seconds()), 5)
-		fmt.Fprintf(io.Discard, "") // suppress unused import
-		return nil, fmt.Errorf("rate limited — reset in %ds (at %s)", waitSec, resetTime.Format(time.RFC1123))
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		resp.Body.Close()
+		return nil, fmt.Errorf("rate limited after retries — try again later")
 	}
 
 	return resp, nil
@@ -74,7 +97,7 @@ func jitter() {
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
 
-// logRateLimit prints rate limit info to stderr if limits are getting low.
+// logRateLimit prints rate limit info to stderr when limits are getting low.
 func logRateLimit(resp *http.Response) {
 	remaining := resp.Header.Get("x-rate-limit-remaining")
 	reset := resp.Header.Get("x-rate-limit-reset")
@@ -82,9 +105,9 @@ func logRateLimit(resp *http.Response) {
 		return
 	}
 	rem, _ := strconv.Atoi(remaining)
-	if rem < 5 {
+	if rem <= 10 {
 		resetTime := parseResetTime(reset)
-		fmt.Fprintf(io.Discard, "rate limit: %d remaining, resets %s\n", rem, resetTime.Format(time.RFC1123))
+		fmt.Fprintf(os.Stderr, "⚠️  Rate limit: %d requests remaining, resets %s\n", rem, resetTime.Format(time.Kitchen))
 	}
 }
 
