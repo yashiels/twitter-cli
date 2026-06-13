@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-tap:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger tap formula update
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $TAP_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/yashiels/homebrew-tap/actions/workflows/update-formula.yml/dispatches" \
+            -d '{
+              "ref": "main",
+              "inputs": {
+                "formula": "twt",
+                "tag": "${{ github.ref_name }}",
+                "repository": "yashiels/twitter-cli",
+                "description": "X/Twitter from the terminal — built on the private GraphQL API",
+                "artifact_template": "twitter-cli_{version}_{target}.tar.gz"
+              }
+            }'
