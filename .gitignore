@@ -1,0 +1,24 @@
+# Build output
+/twt
+*.exe
+
+# Go
+*.test
+*.out
+vendor/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Credentials (never commit)
+~/.config/twt/
+credentials.json
+
+# Test fixtures
+testdata/cookies.db
