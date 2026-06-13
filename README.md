@@ -89,6 +89,77 @@ twt like 2065650561484267540
 twt unlike 2065650561484267540
 ```
 
+### Post, Reply, Quote
+
+```sh
+twt post "Hello from the CLI!"                              # new tweet (prompts for confirmation)
+twt post "Hello!" --yes                                     # skip confirmation
+twt post "Nice thread" --reply 2065650561484267540          # reply to a tweet
+twt post "Interesting" --quote 2065650561484267540          # quote tweet
+```
+
+### Delete
+
+```sh
+twt delete 2065650561484267540        # delete a tweet (prompts for confirmation)
+twt delete 2065650561484267540 --yes  # skip confirmation
+```
+
+### Repost / Unrepost
+
+```sh
+twt repost 2065650561484267540
+twt unrepost 2065650561484267540
+```
+
+### Bookmarks
+
+```sh
+twt bookmarks                          # list your bookmarked tweets
+twt bookmarks --limit 50
+twt bookmark 2065650561484267540       # add a bookmark
+twt unbookmark 2065650561484267540     # remove a bookmark
+```
+
+### Followers / Following
+
+```sh
+twt followers steipete                 # list their followers
+twt followers steipete --limit 50
+twt following steipete                 # list who they follow
+```
+
+### Likes
+
+```sh
+twt likes                              # your liked tweets
+twt likes steipete                     # another user's liked tweets
+twt likes --limit 50
+```
+
+### Mentions
+
+```sh
+twt mentions                           # your mention/notification timeline
+twt mentions --limit 10
+```
+
+### Block / Unblock / Mute / Unmute
+
+```sh
+twt block spammer
+twt unblock spammer
+twt mute annoyingbot
+twt unmute annoyingbot
+```
+
+### Whoami
+
+```sh
+twt whoami              # show your own authenticated profile
+twt whoami --json
+```
+
 ### Search
 
 ```sh
@@ -168,8 +239,15 @@ internal/
     tweet.go                 # GetPostById
     follow.go                # FollowUser / UnfollowUser mutations
     like.go                  # FavoriteMutation / UnfavoriteMutation
+    likes.go                 # UserProfileFavoritesTimelineQuery
     search.go                # SearchTimelineQuery
     timeline.go              # HomeTimeline / HomeTimelineLatest
+    post.go                  # CreatePost / CreateReply / CreateQuote / DeletePost
+    repost.go                # CreateRepostMutation / DeleteRepostMutation
+    bookmark.go              # BookmarksTimeline / BookmarkAdd / BookmarkRemove
+    relationships.go         # followers/following via REST v1.1
+    moderation.go            # BlockUser / UnblockUser / MuteUser / UnmuteUser
+    mentions.go              # NotificationTimelineQuery
     verify.go                # v1.1 verify_credentials
   auth/
     store.go                 # Credential storage (~/.config/twt/)
