@@ -67,23 +67,33 @@ func ExtractFromChrome() (*ChromeCookies, error) {
 		return nil, fmt.Errorf("ct0: %w", err)
 	}
 
-	// twid is not encrypted on some Chrome versions — try both encrypted and plain.
-	twid, _ := queryCookie(db, key, "twid") // non-fatal if missing
+	// twid has format "u=<numeric_id>" — use raw decryption (not hex token extraction).
+	twid, _ := queryRawCookie(db, key, "twid") // non-fatal if missing
 
 	return &ChromeCookies{AuthToken: authToken, CT0: ct0, TwID: twid}, nil
 }
 
 // ParseTwIDUserID extracts the numeric user ID from the twid cookie value.
-// The twid cookie has the format "u=<numeric_id>" (e.g. "u=123456789").
+// The twid cookie has the format "u=<numeric_id>" (URL or plain).
+// The decrypted value may contain garbage bytes before/after the actual content,
+// so we search for the pattern within the string rather than expecting a clean prefix.
 func ParseTwIDUserID(twid string) string {
-	// Strip "u=" prefix.
 	twid = strings.TrimSpace(twid)
-	if strings.HasPrefix(twid, "u=") {
-		return strings.TrimPrefix(twid, "u=")
-	}
-	// Sometimes URL-encoded: %75%3D<id> or u%3D<id>.
-	if strings.HasPrefix(twid, "u%3D") {
-		return strings.TrimPrefix(twid, "u%3D")
+
+	// Look for "u=<digits>" or URL-encoded "u%3D<digits>" within the string.
+	for _, prefix := range []string{"u=", "u%3D"} {
+		idx := strings.Index(twid, prefix)
+		if idx >= 0 {
+			rest := twid[idx+len(prefix):]
+			// Extract leading digits.
+			end := 0
+			for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+				end++
+			}
+			if end > 0 {
+				return rest[:end]
+			}
+		}
 	}
 	return ""
 }
@@ -166,6 +176,47 @@ func queryCookie(db *sql.DB, key []byte, name string) (string, error) {
 	return "", ErrCookieNotFound
 }
 
+// queryRawCookie fetches and decrypts a cookie, returning the full decrypted plaintext.
+// Unlike queryCookie, it does not apply the hex-token extraction — use for non-hex cookies
+// like twid (which has the format "u=<numeric_id>").
+func queryRawCookie(db *sql.DB, key []byte, name string) (string, error) {
+	hosts := []string{".x.com", ".twitter.com"}
+	for _, host := range hosts {
+		val, err := tryQueryRawCookie(db, key, name, host)
+		if err == nil {
+			return val, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+	}
+	return "", ErrCookieNotFound
+}
+
+// tryQueryRawCookie performs the actual query and returns decoded plain text.
+func tryQueryRawCookie(db *sql.DB, key []byte, name, hostKey string) (string, error) {
+	// First try plain text value column.
+	var plainVal string
+	errPlain := db.QueryRow(
+		`SELECT value FROM cookies WHERE name=? AND host_key=? LIMIT 1`,
+		name, hostKey,
+	).Scan(&plainVal)
+	if errPlain == nil && plainVal != "" {
+		return plainVal, nil
+	}
+
+	// Try encrypted value.
+	var encrypted []byte
+	err := db.QueryRow(
+		`SELECT encrypted_value FROM cookies WHERE name=? AND host_key=? LIMIT 1`,
+		name, hostKey,
+	).Scan(&encrypted)
+	if err != nil {
+		return "", err
+	}
+	return decryptChromeValueRaw(key, encrypted)
+}
+
 // tryQueryCookie performs the actual query for one host_key.
 func tryQueryCookie(db *sql.DB, key []byte, name, hostKey string) (string, error) {
 	var encrypted []byte
@@ -226,6 +277,54 @@ func decryptChromeValue(key, encrypted []byte) (string, error) {
 	return token, nil
 }
 
+// decryptChromeValueRaw decrypts a Chrome cookie and returns the full plaintext
+// (skipping the garbled first 16-byte AES block), without applying hex extraction.
+// Use this for cookies whose values are not pure hex strings (e.g. twid = "u=<id>").
+func decryptChromeValueRaw(key, encrypted []byte) (string, error) {
+	if len(encrypted) < 3 {
+		return "", errors.New("encrypted value too short")
+	}
+	ciphertext := encrypted[3:]
+	if len(ciphertext) == 0 {
+		return "", errors.New("empty ciphertext after prefix strip")
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	if len(ciphertext) < aes.BlockSize {
+		return "", errors.New("ciphertext shorter than AES block size")
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	for i := range iv {
+		iv[i] = 0x20
+	}
+
+	mode := cipher.NewCBCDecrypter(block, iv)
+	plaintext := make([]byte, len(ciphertext))
+	mode.CryptBlocks(plaintext, ciphertext)
+
+	plaintext, err = pkcs7Unpad(plaintext)
+	if err != nil {
+		return "", err
+	}
+
+	// Skip the first AES block (16 bytes) which is garbled.
+	if len(plaintext) > aes.BlockSize {
+		plaintext = plaintext[aes.BlockSize:]
+	}
+
+	// Extract printable ASCII characters.
+	result := extractPrintable(plaintext)
+	if result == "" {
+		return "", errors.New("could not extract value from decrypted cookie")
+	}
+	return result, nil
+}
+
 var hexTokenRe = regexp.MustCompile(`[0-9a-f]{32,}`)
 
 // extractToken extracts the actual cookie value from decrypted plaintext.
@@ -235,6 +334,18 @@ var hexTokenRe = regexp.MustCompile(`[0-9a-f]{32,}`)
 func extractToken(plaintext []byte) string {
 	match := hexTokenRe.FindString(string(plaintext))
 	return match
+}
+
+// extractPrintable extracts printable ASCII characters from a byte slice.
+// Used for non-hex cookie values like twid.
+func extractPrintable(data []byte) string {
+	var sb strings.Builder
+	for _, b := range data {
+		if b >= 0x20 && b < 0x7f {
+			sb.WriteByte(b)
+		}
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // pkcs7Unpad removes PKCS7 padding from a byte slice.

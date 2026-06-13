@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/yashiels/twitter-cli/internal/types"
 )
@@ -24,7 +26,17 @@ func (c *Client) GetMentions(userID string, limit int) ([]*types.Tweet, error) {
 
 	raw, err := c.graphqlGet(mentionsQueryID, mentionsOperation, vars, timelineFeatures)
 	if err != nil {
+		if os.Getenv("DEBUG_TWT") != "" {
+			fmt.Fprintf(os.Stderr, "DEBUG GetMentions error: %v\n", err)
+		}
 		return nil, fmt.Errorf("GetMentions: %w", err)
+	}
+
+	if os.Getenv("DEBUG_TWT") != "" {
+		var pretty any
+		_ = json.Unmarshal(raw, &pretty)
+		prettyJSON, _ := json.MarshalIndent(pretty, "", "  ")
+		fmt.Fprintf(os.Stderr, "DEBUG GetMentions response:\n%s\n", prettyJSON)
 	}
 
 	// Try multiple response paths — notification timeline path needs live discovery.

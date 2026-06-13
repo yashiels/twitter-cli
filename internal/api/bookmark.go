@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/yashiels/twitter-cli/internal/types"
 )
@@ -35,16 +37,24 @@ func (c *Client) GetBookmarks(limit int) ([]*types.Tweet, error) {
 		return nil, fmt.Errorf("GetBookmarks: %w", err)
 	}
 
-	// Try multiple response paths — bookmarks timeline path varies.
+	if os.Getenv("DEBUG_TWT") != "" {
+		var pretty any
+		_ = json.Unmarshal(raw, &pretty)
+		prettyJSON, _ := json.MarshalIndent(pretty, "", "  ")
+		fmt.Fprintf(os.Stderr, "DEBUG GetBookmarks response:\n%s\n", prettyJSON)
+	}
+
+	// Try multiple response paths — bookmarks timeline path varies across APK versions.
 	paths := [][]string{
+		{"data", "timelineResponse", "timeline", "instructions"}, // current APK (camelCase)
 		{"data", "bookmarks_timeline", "timeline", "instructions"},
 		{"data", "bookmark_timeline_v2", "timeline", "instructions"},
 		{"data", "timeline_response", "timeline", "instructions"},
 	}
 
 	for _, path := range paths {
-		instructionsRaw, err := getNestedJSON(raw, path...)
-		if err == nil {
+		instructionsRaw, pathErr := getNestedJSON(raw, path...)
+		if pathErr == nil {
 			return parseTimelineInstructions(instructionsRaw)
 		}
 	}

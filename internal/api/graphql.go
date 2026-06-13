@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 )
 
 // graphqlGet executes a Twitter GraphQL GET request.
@@ -41,6 +43,10 @@ func (c *Client) graphqlGet(queryID, operationName string, variables, features m
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if os.Getenv("DEBUG_TWT") != "" {
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Fprintf(os.Stderr, "DEBUG HTTP %d for GET %s: %s\n", resp.StatusCode, operationName, string(body))
+		}
 		return nil, fmt.Errorf("API error: HTTP %d", resp.StatusCode)
 	}
 

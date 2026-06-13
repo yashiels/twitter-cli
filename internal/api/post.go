@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/yashiels/twitter-cli/internal/types"
 )
@@ -20,6 +19,44 @@ var postFeatures = map[string]any{
 	"subscriptions_feature_can_gift_premium": true,
 }
 
+// parseCreatePostResponse parses the CreatePost/CreateReply/CreateQuote API response.
+// The current APK returns tweet_results as a flat object with rest_id directly (no "result" wrapper).
+// We also try the classic nested path for forward-compat.
+func parseCreatePostResponse(raw json.RawMessage) (*types.Tweet, error) {
+	// Classic nested path: data -> create_tweet -> tweet_results -> result
+	resultRaw, err := getNestedJSON(raw, "data", "create_tweet", "tweet_results", "result")
+	if err == nil {
+		return parseTweetResult(resultRaw)
+	}
+
+	// New APK format: tweet_results is flat — {"__typename":"TweetResults","rest_id":"..."}
+	tweetResultsRaw, navErr := getNestedJSON(raw, "data", "create_tweet", "tweet_results")
+	if navErr != nil {
+		// Also try create_post key variant.
+		tweetResultsRaw, navErr = getNestedJSON(raw, "data", "create_post", "tweet_results")
+		if navErr != nil {
+			return nil, fmt.Errorf("cannot navigate CreatePost response: %w", err)
+		}
+	}
+
+	// Extract rest_id from the flat TweetResults object.
+	var flat struct {
+		RestID string `json:"rest_id"`
+	}
+	if jsonErr := json.Unmarshal(tweetResultsRaw, &flat); jsonErr != nil {
+		return nil, fmt.Errorf("parse tweet_results: %w", jsonErr)
+	}
+	if flat.RestID == "" {
+		return nil, fmt.Errorf("empty rest_id in CreatePost response")
+	}
+
+	// Return a minimal tweet; caller adds the author handle via stored credentials.
+	return &types.Tweet{
+		ID:  flat.RestID,
+		URL: "https://x.com/i/status/" + flat.RestID,
+	}, nil
+}
+
 // CreatePost creates a new tweet with the given text.
 func (c *Client) CreatePost(text string) (*types.Tweet, error) {
 	vars := map[string]any{
@@ -31,27 +68,9 @@ func (c *Client) CreatePost(text string) (*types.Tweet, error) {
 		return nil, fmt.Errorf("CreatePost: %w", err)
 	}
 
-	// Debug: print raw response if DEBUG_TWT is set.
-	if os.Getenv("DEBUG_TWT") != "" {
-		var pretty any
-		_ = json.Unmarshal(raw, &pretty)
-		prettyJSON, _ := json.MarshalIndent(pretty, "", "  ")
-		fmt.Fprintf(os.Stderr, "DEBUG CreatePost response:\n%s\n", prettyJSON)
-	}
-
-	// Response path: data -> create_tweet -> tweet_results -> result
-	// Fallback: data -> create_post -> tweet_results -> result (some APK versions)
-	resultRaw, err := getNestedJSON(raw, "data", "create_tweet", "tweet_results", "result")
+	t, err := parseCreatePostResponse(raw)
 	if err != nil {
-		resultRaw, err = getNestedJSON(raw, "data", "create_post", "tweet_results", "result")
-		if err != nil {
-			return nil, fmt.Errorf("CreatePost: navigate response: %w", err)
-		}
-	}
-
-	t, err := parseTweetResult(resultRaw)
-	if err != nil {
-		return nil, fmt.Errorf("CreatePost: parse tweet: %w", err)
+		return nil, fmt.Errorf("CreatePost: %w", err)
 	}
 	return t, nil
 }
@@ -71,18 +90,9 @@ func (c *Client) CreateReply(text, replyToID string) (*types.Tweet, error) {
 		return nil, fmt.Errorf("CreateReply: %w", err)
 	}
 
-	// Same path as CreatePost — fallback for alternate APK response key.
-	resultRaw, err := getNestedJSON(raw, "data", "create_tweet", "tweet_results", "result")
+	t, err := parseCreatePostResponse(raw)
 	if err != nil {
-		resultRaw, err = getNestedJSON(raw, "data", "create_post", "tweet_results", "result")
-		if err != nil {
-			return nil, fmt.Errorf("CreateReply: navigate response: %w", err)
-		}
-	}
-
-	t, err := parseTweetResult(resultRaw)
-	if err != nil {
-		return nil, fmt.Errorf("CreateReply: parse tweet: %w", err)
+		return nil, fmt.Errorf("CreateReply: %w", err)
 	}
 	return t, nil
 }
@@ -99,18 +109,9 @@ func (c *Client) CreateQuote(text, quotedTweetID string) (*types.Tweet, error) {
 		return nil, fmt.Errorf("CreateQuote: %w", err)
 	}
 
-	// Same path as CreatePost — fallback for alternate APK response key.
-	resultRaw, err := getNestedJSON(raw, "data", "create_tweet", "tweet_results", "result")
+	t, err := parseCreatePostResponse(raw)
 	if err != nil {
-		resultRaw, err = getNestedJSON(raw, "data", "create_post", "tweet_results", "result")
-		if err != nil {
-			return nil, fmt.Errorf("CreateQuote: navigate response: %w", err)
-		}
-	}
-
-	t, err := parseTweetResult(resultRaw)
-	if err != nil {
-		return nil, fmt.Errorf("CreateQuote: parse tweet: %w", err)
+		return nil, fmt.Errorf("CreateQuote: %w", err)
 	}
 	return t, nil
 }
