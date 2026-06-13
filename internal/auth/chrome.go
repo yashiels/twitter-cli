@@ -197,10 +197,10 @@ func decryptChromeValue(key, encrypted []byte) (string, error) {
 		return "", err
 	}
 
-	// The first block (16 bytes) may contain garbage; extract the hex token.
-	raw := string(plaintext)
-	// Try clean extraction first (skip first block if it looks garbled).
-	token := extractHexToken(raw)
+	// The first AES block (16 bytes) is garbled on macOS Chrome due to the
+	// Keychain-derived key interaction. Skip it and extract the actual token
+	// from the remaining plaintext.
+	token := extractToken(plaintext)
 	if token == "" {
 		return "", errors.New("could not extract token from decrypted value")
 	}
@@ -209,28 +209,12 @@ func decryptChromeValue(key, encrypted []byte) (string, error) {
 
 var hexTokenRe = regexp.MustCompile(`[0-9a-f]{32,}`)
 
-// extractHexToken extracts a lowercase hex token from the decrypted string.
-func extractHexToken(s string) string {
-	// Also try the full string first (for non-hex cookies like ct0).
-	// ct0 is alphanumeric, auth_token is pure hex.
-	s = strings.TrimSpace(s)
-
-	// Strip null bytes and control characters.
-	var cleaned strings.Builder
-	for _, r := range s {
-		if r >= 0x20 && r < 0x7f {
-			cleaned.WriteRune(r)
-		}
-	}
-	result := strings.TrimSpace(cleaned.String())
-
-	// If the value looks like a raw token (no padding artifacts), return it.
-	if len(result) >= 32 {
-		return result
-	}
-
-	// Fall back to regex hex extraction.
-	match := hexTokenRe.FindString(s)
+// extractToken extracts the actual cookie value from decrypted plaintext.
+// The first AES block (16 bytes) is garbled due to Chrome's Keychain-derived
+// key interaction. Both auth_token (40 hex chars) and ct0 (160 hex chars)
+// are lowercase hex strings, so we extract the longest hex run.
+func extractToken(plaintext []byte) string {
+	match := hexTokenRe.FindString(string(plaintext))
 	return match
 }
 

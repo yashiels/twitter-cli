@@ -55,9 +55,8 @@ func parseUserResponse(raw json.RawMessage) (*types.User, error) {
 
 	// APK flat schema — try flat first.
 	var flat struct {
-		RestID         string `json:"rest_id"`
-		IsBlueVerified bool   `json:"is_blue_verified"`
-		Core           struct {
+		RestID string `json:"rest_id"`
+		Core   struct {
 			ScreenName string `json:"screen_name"`
 			Name       string `json:"name"`
 		} `json:"core"`
@@ -67,18 +66,25 @@ func parseUserResponse(raw json.RawMessage) (*types.User, error) {
 		ProfileBio struct {
 			Description string `json:"description"`
 		} `json:"profile_bio"`
-		Stats struct {
-			FollowersCount int `json:"followers_count"`
-			FriendsCount   int `json:"friends_count"`
-			StatusesCount  int `json:"statuses_count"`
-		} `json:"stats"`
+		// APK schema: relationship_counts and tweet_counts
+		RelationshipCounts struct {
+			Followers int `json:"followers"`
+			Following int `json:"following"`
+		} `json:"relationship_counts"`
+		TweetCounts struct {
+			Tweets int `json:"tweets"`
+		} `json:"tweet_counts"`
+		Verification struct {
+			IsBlueVerified bool `json:"is_blue_verified"`
+		} `json:"verification"`
 		AffiliatesHighlightedLabel struct {
 			Label struct {
 				Description string `json:"description"`
 			} `json:"label"`
 		} `json:"affiliates_highlighted_label"`
-		// Also try legacy (web schema fallback)
-		Legacy *struct {
+		// Legacy fallback (web schema)
+		IsBlueVerified bool `json:"is_blue_verified"`
+		Legacy         *struct {
 			ScreenName     string `json:"screen_name"`
 			Name           string `json:"name"`
 			Description    string `json:"description"`
@@ -95,7 +101,7 @@ func parseUserResponse(raw json.RawMessage) (*types.User, error) {
 
 	user := &types.User{
 		RestID:      flat.RestID,
-		Verified:    flat.IsBlueVerified,
+		Verified:    flat.Verification.IsBlueVerified || flat.IsBlueVerified,
 		Affiliation: flat.AffiliatesHighlightedLabel.Label.Description,
 	}
 
@@ -110,11 +116,10 @@ func parseUserResponse(raw json.RawMessage) (*types.User, error) {
 	if flat.ProfileBio.Description != "" {
 		user.Description = flat.ProfileBio.Description
 	}
-	if flat.Stats.FollowersCount != 0 || flat.Stats.FriendsCount != 0 {
-		user.FollowersCount = flat.Stats.FollowersCount
-		user.FriendsCount = flat.Stats.FriendsCount
-		user.StatusesCount = flat.Stats.StatusesCount
-	}
+	// APK schema: relationship_counts + tweet_counts
+	user.FollowersCount = flat.RelationshipCounts.Followers
+	user.FriendsCount = flat.RelationshipCounts.Following
+	user.StatusesCount = flat.TweetCounts.Tweets
 
 	// Fallback: web API legacy schema
 	if user.ScreenName == "" && flat.Legacy != nil {

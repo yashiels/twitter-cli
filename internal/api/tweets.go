@@ -43,21 +43,33 @@ func (c *Client) GetUserTweets(userID string, limit int) ([]*types.Tweet, error)
 }
 
 // rawTweetResult is used for JSON parsing of tweet entries.
+// The APK schema differs from the web API:
+//   - Text lives in details.full_text (short) or note_tweet.note_tweet_results.result.text (long)
+//   - Date is details.created_at_ms (Unix millis)
+//   - Counts are at counts.favorite_count etc.
+//   - Legacy only has lang/typename in the APK schema
 type rawTweetResult struct {
 	Typename string `json:"__typename"`
+	RestID   string `json:"rest_id"`
 
-	// Direct tweet fields (TweetResults)
-	RestID string `json:"rest_id"`
-	Legacy struct {
+	// APK schema: tweet details (text, date)
+	Details struct {
 		FullText             string `json:"full_text"`
-		CreatedAt            string `json:"created_at"`
-		FavoriteCount        int    `json:"favorite_count"`
-		RetweetCount         int    `json:"retweet_count"`
-		ReplyCount           int    `json:"reply_count"`
+		CreatedAtMs          int64  `json:"created_at_ms"`
 		InReplyToScreenName  string `json:"in_reply_to_screen_name"`
 		RetweetedStatusIDStr string `json:"retweeted_status_id_str"`
-		UserIDStr            string `json:"user_id_str"`
-	} `json:"legacy"`
+	} `json:"details"`
+
+	// APK schema: engagement counts
+	Counts struct {
+		FavoriteCount int `json:"favorite_count"`
+		RetweetCount  int `json:"retweet_count"`
+		ReplyCount    int `json:"reply_count"`
+		BookmarkCount int `json:"bookmark_count"`
+		QuoteCount    int `json:"quote_count"`
+	} `json:"counts"`
+
+	// Long tweet text
 	NoteTweet struct {
 		NoteTweetResults struct {
 			Result struct {
@@ -65,9 +77,11 @@ type rawTweetResult struct {
 			} `json:"result"`
 		} `json:"note_tweet_results"`
 	} `json:"note_tweet"`
+
 	Views struct {
 		Count string `json:"count"`
 	} `json:"views"`
+
 	Core struct {
 		UserResults struct {
 			Result struct {
@@ -80,6 +94,17 @@ type rawTweetResult struct {
 			} `json:"result"`
 		} `json:"user_results"`
 	} `json:"core"`
+
+	// Legacy fallback (web schema)
+	Legacy struct {
+		FullText             string `json:"full_text"`
+		CreatedAt            string `json:"created_at"`
+		FavoriteCount        int    `json:"favorite_count"`
+		RetweetCount         int    `json:"retweet_count"`
+		ReplyCount           int    `json:"reply_count"`
+		InReplyToScreenName  string `json:"in_reply_to_screen_name"`
+		RetweetedStatusIDStr string `json:"retweeted_status_id_str"`
+	} `json:"legacy"`
 
 	// Wrapped tweet (TweetWithVisibilityResults)
 	Tweet *rawTweetResult `json:"tweet"`
@@ -174,8 +199,11 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 		return nil
 	}
 
-	// Prefer note_tweet text (long tweets), fall back to legacy.full_text.
+	// Text priority: note_tweet (long) > details.full_text (APK) > legacy.full_text (web)
 	text := r.NoteTweet.NoteTweetResults.Result.Text
+	if text == "" {
+		text = r.Details.FullText
+	}
 	if text == "" {
 		text = r.Legacy.FullText
 	}
@@ -183,42 +211,62 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 		return nil
 	}
 
-	// Parse created_at ("Mon Jan 02 15:04:05 +0000 2006" format).
+	// Date: APK uses details.created_at_ms (Unix millis), web uses legacy.created_at (RFC)
 	var createdAt time.Time
-	if r.Legacy.CreatedAt != "" {
+	if r.Details.CreatedAtMs > 0 {
+		createdAt = time.UnixMilli(r.Details.CreatedAtMs)
+	} else if r.Legacy.CreatedAt != "" {
 		parsed, err := time.Parse("Mon Jan 02 15:04:05 +0000 2006", r.Legacy.CreatedAt)
 		if err == nil {
 			createdAt = parsed
 		}
 	}
 
-	// Extract view count (stored as a string).
+	// View count
 	var viewCount int
 	if r.Views.Count != "" {
 		viewCount, _ = strconv.Atoi(r.Views.Count)
 	}
 
-	// Determine author handle.
+	// Author handle
 	handle := r.Core.UserResults.Result.Core.ScreenName
 	if handle == "" && r.Core.UserResults.Result.Legacy != nil {
 		handle = r.Core.UserResults.Result.Legacy.ScreenName
 	}
 
+	// Counts: APK schema (counts.*) > web schema (legacy.*)
+	favCount := r.Counts.FavoriteCount
+	rtCount := r.Counts.RetweetCount
+	replyCount := r.Counts.ReplyCount
+	if favCount == 0 && r.Legacy.FavoriteCount > 0 {
+		favCount = r.Legacy.FavoriteCount
+	}
+	if rtCount == 0 && r.Legacy.RetweetCount > 0 {
+		rtCount = r.Legacy.RetweetCount
+	}
+	if replyCount == 0 && r.Legacy.ReplyCount > 0 {
+		replyCount = r.Legacy.ReplyCount
+	}
+
+	// Reply/retweet detection: APK uses details.*, web uses legacy.*
+	isReply := r.Details.InReplyToScreenName != "" || r.Legacy.InReplyToScreenName != ""
+	isRetweet := r.Details.RetweetedStatusIDStr != "" || r.Legacy.RetweetedStatusIDStr != ""
+
 	tweet := &types.Tweet{
 		ID:            r.RestID,
 		Text:          text,
 		CreatedAt:     createdAt,
-		FavoriteCount: r.Legacy.FavoriteCount,
-		RetweetCount:  r.Legacy.RetweetCount,
-		ReplyCount:    r.Legacy.ReplyCount,
+		FavoriteCount: favCount,
+		RetweetCount:  rtCount,
+		ReplyCount:    replyCount,
 		ViewCount:     viewCount,
 		AuthorHandle:  handle,
-		IsRetweet:     r.Legacy.RetweetedStatusIDStr != "",
-		IsReply:       r.Legacy.InReplyToScreenName != "",
+		IsRetweet:     isRetweet,
+		IsReply:       isReply,
 	}
 	tweet.URL = tweet.TweetURL()
 
-	// Quoted tweet.
+	// Quoted tweet
 	if r.QuotedStatusResult != nil && r.QuotedStatusResult.Result != nil {
 		if qt := convertRawTweet(r.QuotedStatusResult.Result); qt != nil {
 			tweet.QuotedTweet = qt
