@@ -27,3 +27,4 @@ credentials.json
 
 # Test fixtures
 testdata/cookies.db
+.worktrees/
