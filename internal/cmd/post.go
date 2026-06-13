@@ -55,6 +55,11 @@ func NewPostCmd(opts *output.Options) *cobra.Command {
 			client := api.NewClient(creds)
 			p := output.New(opts)
 
+			// Reject conflicting flags.
+			if reply != "" && quote != "" {
+				return fmt.Errorf("cannot use --reply and --quote together")
+			}
+
 			var tweet *types.Tweet
 			switch {
 			case reply != "":

@@ -34,16 +34,17 @@ func NewWhoamiCmd(opts *output.Options) *cobra.Command {
 			client := api.NewClient(creds)
 			p := output.New(opts)
 
-			// Prefer handle lookup for fresh data; fall back to ID lookup.
+			// Prefer handle lookup; fall back to ID if handle is stale or missing.
 			if creds.Handle != "" {
-				user, err := client.GetUserByScreenName(creds.Handle)
-				if errors.Is(err, api.ErrUserNotFound) {
-					return fmt.Errorf("profile not found — re-run: twt auth login")
+				user, lookupErr := client.GetUserByScreenName(creds.Handle)
+				if lookupErr == nil {
+					return p.PrintUser(user)
 				}
-				if err != nil {
-					return fmt.Errorf("whoami: %w", err)
+				// Handle might be stale — fall through to ID lookup if available.
+				if creds.UserID == "" {
+					return fmt.Errorf("whoami: %w", lookupErr)
 				}
-				return p.PrintUser(user)
+				p.Infof("Handle @%s lookup failed, trying by user ID...", creds.Handle)
 			}
 
 			user, err := client.GetUserByID(creds.UserID)
