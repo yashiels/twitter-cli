@@ -11,6 +11,11 @@ import (
 const (
 	getUserQueryID   = "bbS0COK9SwcgdM7QCEqWDg"
 	getUserOperation = "GetUserByScreenNameQuery"
+
+	// NOTE: getUserByIDQueryID/getUserByIDOperation are for GetUserQuery (by numeric ID).
+	// Do NOT reuse getUserQueryID/getUserOperation which belong to GetUserByScreenNameQuery.
+	getUserByIDQueryID   = "q5op2HlD7t5RvWB_SrFVfQ"
+	getUserByIDOperation = "GetUserQuery"
 )
 
 // getUserFeatures are the feature flags required by GetUserByScreenNameQuery.
@@ -20,6 +25,19 @@ var getUserFeatures = map[string]any{
 
 // ErrUserNotFound is returned when a user does not exist.
 var ErrUserNotFound = errors.New("user not found")
+
+// GetUserByID fetches a Twitter user's profile by their numeric rest_id.
+func (c *Client) GetUserByID(userID string) (*types.User, error) {
+	vars := map[string]any{"rest_id": userID}
+	features := map[string]any{"subscriptions_feature_can_gift_premium": true}
+
+	raw, err := c.graphqlGet(getUserByIDQueryID, getUserByIDOperation, vars, features)
+	if err != nil {
+		return nil, fmt.Errorf("GetUserByID: %w", err)
+	}
+
+	return parseUserResponse(raw)
+}
 
 // GetUserByScreenName fetches a Twitter user's profile by their @handle.
 func (c *Client) GetUserByScreenName(handle string) (*types.User, error) {

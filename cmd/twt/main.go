@@ -11,7 +11,7 @@ import (
 )
 
 // version is set at build time via -ldflags "-X main.version=<tag>".
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	opts := output.DefaultOptions()
@@ -67,16 +67,42 @@ provided auth_token + ct0 cookie values.`,
 
 	// Register subcommands.
 	root.AddCommand(
+		// Auth
 		cmd.NewAuthCmd(opts),
+		// User
 		cmd.NewUserCmd(opts),
+		cmd.NewWhoamiCmd(opts),
+		// Tweets
 		cmd.NewTweetsCmd(opts, &limit),
 		cmd.NewTweetCmd(opts),
-		cmd.NewFollowCmd(opts),
-		cmd.NewUnfollowCmd(opts),
+		cmd.NewTimelineCmd(opts, &limit),
+		cmd.NewSearchCmd(opts, &limit),
+		// Post actions
+		cmd.NewPostCmd(opts),
+		cmd.NewDeleteCmd(opts),
+		// Reposts
+		cmd.NewRepostCmd(opts),
+		cmd.NewUnrepostCmd(opts),
+		// Likes
 		cmd.NewLikeCmd(opts),
 		cmd.NewUnlikeCmd(opts),
-		cmd.NewSearchCmd(opts, &limit),
-		cmd.NewTimelineCmd(opts, &limit),
+		cmd.NewLikesCmd(opts, &limit),
+		// Bookmarks
+		cmd.NewBookmarksCmd(opts, &limit),
+		cmd.NewBookmarkCmd(opts),
+		cmd.NewUnbookmarkCmd(opts),
+		// Relationships
+		cmd.NewFollowCmd(opts),
+		cmd.NewUnfollowCmd(opts),
+		cmd.NewFollowersCmd(opts, &limit),
+		cmd.NewFollowingCmd(opts, &limit),
+		// Moderation
+		cmd.NewBlockCmd(opts),
+		cmd.NewUnblockCmd(opts),
+		cmd.NewMuteCmd(opts),
+		cmd.NewUnmuteCmd(opts),
+		// Mentions
+		cmd.NewMentionsCmd(opts, &limit),
 	)
 
 	if err := root.Execute(); err != nil {

@@ -12,8 +12,9 @@ import (
 type Credentials struct {
 	AuthToken string    `json:"auth_token"`
 	CT0       string    `json:"ct0"`
-	Handle    string    `json:"handle,omitempty"`
-	SavedAt   time.Time `json:"saved_at"`
+	UserID    string    `json:"user_id,omitempty"` // numeric Twitter user ID
+	Handle    string    `json:"handle,omitempty"`  // @screen_name (without @)
+	SavedAt   time.Time `json:"saved_at"`          // MUST remain time.Time — auth status uses .IsZero() and .Format()
 }
 
 // ErrNotAuthenticated is returned when no credentials are stored.

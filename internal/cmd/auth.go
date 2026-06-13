@@ -74,11 +74,12 @@ Use --manual to enter cookies interactively instead.`,
 			// Verify credentials by calling the API.
 			p.Infof("Verifying credentials...")
 			client := api.NewClient(creds)
-			handle, err := verifyAndGetHandle(client)
+			handle, userID, err := verifyAndGetHandle(client)
 			if err != nil {
 				return fmt.Errorf("credentials invalid or API error: %w", err)
 			}
 			creds.Handle = handle
+			creds.UserID = userID
 
 			if err := auth.Save(creds); err != nil {
 				return fmt.Errorf("save credentials: %w", err)
@@ -171,28 +172,16 @@ func promptCredentials() (authToken, ct0 string, err error) {
 	return authToken, ct0, nil
 }
 
-// verifyAndGetHandle calls verify_credentials or a user lookup to get the current user's handle.
-func verifyAndGetHandle(client *api.Client) (string, error) {
-	// Twitter's 1.1 verify_credentials or we use the GraphQL me query.
-	// For simplicity, use the screen_name from the twid cookie if available,
-	// or just make an API call that returns the current user.
-	// We'll call a well-known public handle to verify the credentials work,
-	// then try to get the authenticated user via a different endpoint.
-
-	// Use Twitter's 1.1 account/verify_credentials (simpler).
-	handle, err := verifyCredentials1v1(client)
-	if err != nil {
+// verifyAndGetHandle calls verify_credentials to get the current user's handle and numeric ID.
+func verifyAndGetHandle(client *api.Client) (handle, userID string, err error) {
+	h, id, callErr := client.VerifyCredentialsWithID()
+	if callErr != nil {
 		// Fall back to just confirming the API works by checking a known user.
 		_, ferr := client.GetUserByScreenName("twitter")
 		if ferr != nil {
-			return "", fmt.Errorf("API verification failed: %w", err)
+			return "", "", fmt.Errorf("API verification failed: %w", callErr)
 		}
-		return "", nil // credentials work but we can't get handle
+		return "", "", nil // credentials work but we can't get identity
 	}
-	return handle, nil
-}
-
-// verifyCredentials1v1 calls the v1.1 endpoint to get the current user.
-func verifyCredentials1v1(client *api.Client) (string, error) {
-	return client.VerifyCredentials()
+	return h, id, nil
 }
