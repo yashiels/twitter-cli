@@ -25,3 +25,8 @@ test:
 	go test ./...
 
 .DEFAULT_GOAL := build
+
+hooks:
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-commit
+	@echo "✓ Git hooks installed"
