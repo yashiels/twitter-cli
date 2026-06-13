@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha1"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,14 +14,13 @@ import (
 	"regexp"
 	"strings"
 
-	"crypto/sha1"
 	"golang.org/x/crypto/pbkdf2"
 
 	_ "modernc.org/sqlite"
 )
 
 // ErrNoChromeProfile is returned when Chrome's cookie DB cannot be found.
-var ErrNoChromeProfile = errors.New("Chrome cookie database not found")
+var ErrNoChromeProfile = errors.New("chrome cookie database not found")
 
 // ErrCookieNotFound is returned when the requested cookie is absent.
 var ErrCookieNotFound = errors.New("cookie not found in Chrome")

@@ -9,7 +9,8 @@ import (
 // VerifyCredentials calls the v1.1 account/verify_credentials endpoint
 // to confirm auth is working and return the current user's screen name.
 func (c *Client) VerifyCredentials() (string, error) {
-	req, err := http.NewRequest(http.MethodGet,
+	req, err := http.NewRequest(
+		http.MethodGet,
 		"https://api.twitter.com/1.1/account/verify_credentials.json",
 		nil,
 	)

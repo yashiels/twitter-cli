@@ -10,6 +10,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/mattn/go-isatty"
+
 	"github.com/yashiels/twitter-cli/internal/types"
 )
 
@@ -81,7 +82,8 @@ func (p *Printer) printUserHuman(u *types.User) error {
 	if u.Verified {
 		verified = " " + yellow.Sprint("✓")
 	}
-	fmt.Printf("%s %s%s\n",
+	fmt.Printf(
+		"%s %s%s\n",
 		bold.Sprint(u.Name),
 		cyan.Sprint("@"+u.ScreenName),
 		verified,
@@ -106,7 +108,8 @@ func (p *Printer) printUserHuman(u *types.User) error {
 	fmt.Println()
 
 	// Stats row
-	fmt.Printf("%s followers  %s following  %s tweets\n",
+	fmt.Printf(
+		"%s followers  %s following  %s tweets\n",
 		bold.Sprint(formatCount(u.FollowersCount)),
 		bold.Sprint(formatCount(u.FriendsCount)),
 		bold.Sprint(formatCount(u.StatusesCount)),
