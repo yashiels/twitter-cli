@@ -118,17 +118,23 @@ type rawTweetResult struct {
 // parseTweetsResponse parses the timeline response into a slice of Tweets.
 func parseTweetsResponse(raw json.RawMessage) ([]*types.Tweet, error) {
 	// Navigate: data -> user_result -> result -> timeline_response -> timeline -> instructions
-	timelineRaw, err := getNestedJSON(raw, "data", "user_result", "result", "timeline_response", "timeline", "instructions")
+	instructionsRaw, err := getNestedJSON(raw, "data", "user_result", "result", "timeline_response", "timeline", "instructions")
 	if err != nil {
 		// Try alternate path
-		timelineRaw, err = getNestedJSON(raw, "data", "user_result", "result", "timeline", "timeline", "instructions")
+		instructionsRaw, err = getNestedJSON(raw, "data", "user_result", "result", "timeline", "timeline", "instructions")
 		if err != nil {
 			return nil, fmt.Errorf("navigate timeline: %w", err)
 		}
 	}
 
+	return parseTimelineInstructions(instructionsRaw)
+}
+
+// parseTimelineInstructions parses a raw JSON instructions array into tweets.
+// This is the shared core for user tweets, search, and home timeline.
+func parseTimelineInstructions(instructionsRaw json.RawMessage) ([]*types.Tweet, error) {
 	var instructions []json.RawMessage
-	if err := json.Unmarshal(timelineRaw, &instructions); err != nil {
+	if err := json.Unmarshal(instructionsRaw, &instructions); err != nil {
 		return nil, fmt.Errorf("parse instructions: %w", err)
 	}
 

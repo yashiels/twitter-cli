@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,64 @@ func (c *Client) graphqlGet(queryID, operationName string, variables, features m
 	fullURL := endpoint + "?" + params.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error: HTTP %d", resp.StatusCode)
+	}
+
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	// Check for API-level errors in the response.
+	var errCheck struct {
+		Errors []struct {
+			Message string `json:"message"`
+			Code    int    `json:"code"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &errCheck); err == nil && len(errCheck.Errors) > 0 {
+		return nil, fmt.Errorf("API error: %s (code %d)", errCheck.Errors[0].Message, errCheck.Errors[0].Code)
+	}
+
+	return raw, nil
+}
+
+// graphqlPost executes a Twitter GraphQL POST mutation.
+// queryID and operationName form the path; variables and features are sent as a JSON body.
+func (c *Client) graphqlPost(queryID, operationName string, variables, features map[string]any) (json.RawMessage, error) {
+	varsJSON, err := json.Marshal(variables)
+	if err != nil {
+		return nil, fmt.Errorf("marshal variables: %w", err)
+	}
+
+	featJSON, err := json.Marshal(features)
+	if err != nil {
+		return nil, fmt.Errorf("marshal features: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("%s/%s/%s", BaseURL, queryID, operationName)
+
+	body := map[string]json.RawMessage{
+		"variables": varsJSON,
+		"features":  featJSON,
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}

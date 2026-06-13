@@ -69,6 +69,13 @@ provided auth_token + ct0 cookie values.`,
 		cmd.NewAuthCmd(opts),
 		cmd.NewUserCmd(opts),
 		cmd.NewTweetsCmd(opts, &limit),
+		cmd.NewTweetCmd(opts),
+		cmd.NewFollowCmd(opts),
+		cmd.NewUnfollowCmd(opts),
+		cmd.NewLikeCmd(opts),
+		cmd.NewUnlikeCmd(opts),
+		cmd.NewSearchCmd(opts, &limit),
+		cmd.NewTimelineCmd(opts, &limit),
 	)
 
 	if err := root.Execute(); err != nil {

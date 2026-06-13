@@ -140,6 +140,32 @@ func (p *Printer) printUserPlain(u *types.User) error {
 	return nil
 }
 
+// PrintUsers renders a list of user profiles (for search --users results).
+func (p *Printer) PrintUsers(users []*types.User) error {
+	switch p.opts.Format {
+	case FormatJSON:
+		return p.JSON(users)
+	case FormatPlain:
+		for _, u := range users {
+			if err := p.printUserPlain(u); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		dim := color.New(color.Faint)
+		for i, u := range users {
+			if i > 0 {
+				fmt.Println(dim.Sprint(strings.Repeat("─", 72)))
+			}
+			if err := p.printUserHuman(u); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
 // PrintTweets renders a list of tweets.
 func (p *Printer) PrintTweets(tweets []*types.Tweet) error {
 	switch p.opts.Format {

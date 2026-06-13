@@ -43,7 +43,12 @@ func parseUserResponse(raw json.RawMessage) (*types.User, error) {
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
+	return parseUserResult(result)
+}
 
+// parseUserResult converts a raw user result JSON object into a User.
+// This is called both from parseUserResponse and from timeline entry parsers.
+func parseUserResult(result json.RawMessage) (*types.User, error) {
 	// The result object has typename
 	var typed struct {
 		Typename string `json:"__typename"`
