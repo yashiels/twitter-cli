@@ -14,10 +14,10 @@ var followFeatures = map[string]any{
 	"subscriptions_feature_can_gift_premium": true,
 }
 
-// FollowUser follows the user with the given rest_id.
+// FollowUser follows the user with the given user ID.
 func (c *Client) FollowUser(userID string) error {
 	vars := map[string]any{
-		"rest_id": userID,
+		"target_user_id": userID,
 	}
 
 	_, err := c.graphqlPost(followQueryID, followOperation, vars, followFeatures)
@@ -27,10 +27,10 @@ func (c *Client) FollowUser(userID string) error {
 	return nil
 }
 
-// UnfollowUser unfollows the user with the given rest_id.
+// UnfollowUser unfollows the user with the given user ID.
 func (c *Client) UnfollowUser(userID string) error {
 	vars := map[string]any{
-		"rest_id": userID,
+		"target_user_id": userID,
 	}
 
 	_, err := c.graphqlPost(unfollowQueryID, unfollowOperation, vars, followFeatures)
