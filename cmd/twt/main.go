@@ -11,7 +11,7 @@ import (
 )
 
 // version is set at build time via -ldflags "-X main.version=<tag>".
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	opts := output.DefaultOptions()
@@ -67,16 +67,42 @@ provided auth_token + ct0 cookie values.`,
 
 	// Register subcommands.
 	root.AddCommand(
+		// Auth
 		cmd.NewAuthCmd(opts),
+		// Identity
+		cmd.NewWhoamiCmd(opts),
+		// Profile
 		cmd.NewUserCmd(opts),
+		// Tweets
 		cmd.NewTweetsCmd(opts, &limit),
 		cmd.NewTweetCmd(opts),
+		cmd.NewTimelineCmd(opts, &limit),
+		// Post/edit
+		cmd.NewPostCmd(opts),
+		cmd.NewDeleteCmd(opts),
+		cmd.NewRepostCmd(opts),
+		cmd.NewUnrepostCmd(opts),
+		// Bookmarks
+		cmd.NewBookmarksCmd(opts),
+		cmd.NewBookmarkCmd(opts),
+		cmd.NewUnbookmarkCmd(opts),
+		// Social graph
 		cmd.NewFollowCmd(opts),
 		cmd.NewUnfollowCmd(opts),
+		cmd.NewFollowersCmd(opts),
+		cmd.NewFollowingCmd(opts),
+		// Reactions
 		cmd.NewLikeCmd(opts),
 		cmd.NewUnlikeCmd(opts),
+		cmd.NewLikesCmd(opts),
+		// Discovery
 		cmd.NewSearchCmd(opts, &limit),
-		cmd.NewTimelineCmd(opts, &limit),
+		cmd.NewMentionsCmd(opts),
+		// Moderation
+		cmd.NewBlockCmd(opts),
+		cmd.NewUnblockCmd(opts),
+		cmd.NewMuteCmd(opts),
+		cmd.NewUnmuteCmd(opts),
 	)
 
 	if err := root.Execute(); err != nil {

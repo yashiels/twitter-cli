@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -131,4 +133,33 @@ func parseResetTime(s string) time.Time {
 		return time.Now().Add(60 * time.Second)
 	}
 	return time.Unix(ts, 0)
+}
+
+// restGet executes a Twitter REST v1.1 GET request.
+// path is relative to https://api.twitter.com (e.g., "/1.1/followers/list.json").
+// params are query parameters.
+func (c *Client) restGet(path string, params url.Values) (json.RawMessage, error) {
+	fullURL := "https://api.twitter.com" + path + "?" + params.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build REST request: %w", err)
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("REST API error: HTTP %d", resp.StatusCode)
+	}
+
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode REST response: %w", err)
+	}
+
+	return raw, nil
 }

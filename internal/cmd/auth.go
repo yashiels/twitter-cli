@@ -71,20 +71,25 @@ Use --manual to enter cookies interactively instead.`,
 				CT0:       ct0,
 			}
 
-			// Verify credentials by calling the API.
+			// Verify credentials and resolve identity.
 			p.Infof("Verifying credentials...")
 			client := api.NewClient(creds)
-			handle, err := verifyAndGetHandle(client)
+			identity, err := verifyAndGetIdentity(client)
 			if err != nil {
 				return fmt.Errorf("credentials invalid or API error: %w", err)
 			}
-			creds.Handle = handle
+			creds.Handle = identity.Handle
+			creds.UserID = identity.UserID
 
 			if err := auth.Save(creds); err != nil {
 				return fmt.Errorf("save credentials: %w", err)
 			}
 
-			fmt.Printf("✓ Logged in as @%s\n", handle)
+			if creds.Handle != "" {
+				fmt.Printf("✓ Logged in as @%s\n", creds.Handle)
+			} else {
+				fmt.Println("✓ Logged in (handle unavailable)")
+			}
 			return nil
 		},
 	}
@@ -117,11 +122,15 @@ func newAuthStatusCmd(opts *output.Options) *cobra.Command {
 				return p.JSON(map[string]any{
 					"authenticated": true,
 					"handle":        handle,
+					"user_id":       creds.UserID,
 					"saved_at":      creds.SavedAt,
 				})
 			}
 
 			fmt.Printf("Logged in as @%s\n", handle)
+			if creds.UserID != "" {
+				fmt.Printf("User ID: %s\n", creds.UserID)
+			}
 			if !creds.SavedAt.IsZero() {
 				fmt.Printf("Token saved: %s\n", creds.SavedAt.Format("2006-01-02 15:04:05"))
 			}
@@ -171,28 +180,25 @@ func promptCredentials() (authToken, ct0 string, err error) {
 	return authToken, ct0, nil
 }
 
-// verifyAndGetHandle calls verify_credentials or a user lookup to get the current user's handle.
-func verifyAndGetHandle(client *api.Client) (string, error) {
-	// Twitter's 1.1 verify_credentials or we use the GraphQL me query.
-	// For simplicity, use the screen_name from the twid cookie if available,
-	// or just make an API call that returns the current user.
-	// We'll call a well-known public handle to verify the credentials work,
-	// then try to get the authenticated user via a different endpoint.
-
-	// Use Twitter's 1.1 account/verify_credentials (simpler).
-	handle, err := verifyCredentials1v1(client)
-	if err != nil {
-		// Fall back to just confirming the API works by checking a known user.
-		_, ferr := client.GetUserByScreenName("twitter")
-		if ferr != nil {
-			return "", fmt.Errorf("API verification failed: %w", err)
-		}
-		return "", nil // credentials work but we can't get handle
-	}
-	return handle, nil
+// identityResult holds the resolved identity from verify.
+type identityResult struct {
+	Handle string
+	UserID string
 }
 
-// verifyCredentials1v1 calls the v1.1 endpoint to get the current user.
-func verifyCredentials1v1(client *api.Client) (string, error) {
-	return client.VerifyCredentials()
+// verifyAndGetIdentity calls verify_credentials to confirm auth and resolve identity.
+func verifyAndGetIdentity(client *api.Client) (*identityResult, error) {
+	result, err := client.VerifyCredentials()
+	if err != nil {
+		// Fall back to confirming API works by checking a known user.
+		_, ferr := client.GetUserByScreenName("twitter")
+		if ferr != nil {
+			return nil, fmt.Errorf("API verification failed: %w", err)
+		}
+		return &identityResult{}, nil // credentials work but we can't get identity
+	}
+	return &identityResult{
+		Handle: result.ScreenName,
+		UserID: result.UserID,
+	}, nil
 }

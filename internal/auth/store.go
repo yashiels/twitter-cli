@@ -12,6 +12,7 @@ import (
 type Credentials struct {
 	AuthToken string    `json:"auth_token"`
 	CT0       string    `json:"ct0"`
+	UserID    string    `json:"user_id,omitempty"` // numeric user ID
 	Handle    string    `json:"handle,omitempty"`
 	SavedAt   time.Time `json:"saved_at"`
 }
