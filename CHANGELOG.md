@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.0] - 2026-06-14
+
+### Added
+- `twt post <text>` — post a new tweet with confirmation prompt (`--yes` to skip)
+- `twt post --reply <id> <text>` — reply to a tweet
+- `twt post --quote <id> <text>` — quote-tweet a tweet
+- `twt delete <id>` — delete a tweet with confirmation (`--yes` to skip)
+- `twt repost <id>` — repost (retweet) a tweet
+- `twt unrepost <id>` — remove a repost
+- `twt bookmarks` — list your bookmarked tweets
+- `twt bookmark <id>` — bookmark a tweet
+- `twt unbookmark <id>` — remove a bookmark
+- `twt followers <handle>` — list a user's followers (REST v1.1)
+- `twt following <handle>` — list who a user follows (REST v1.1)
+- `twt mentions` — show recent mentions/notifications
+- `twt likes [handle]` — list liked tweets (your own or another user's)
+- `twt block <handle>` — block a user
+- `twt unblock <handle>` — unblock a user
+- `twt mute <handle>` — mute a user
+- `twt unmute <handle>` — unmute a user
+- `twt whoami` — show your own profile
+
+### Changed
+- `twt auth login` now stores user ID and handle in credentials for commands that need them
+- `twt auth status` now shows stored user ID
+
 ## [0.1.0] - 2026-06-13
 
 ### Added

@@ -26,11 +26,11 @@ make build
 
 ```sh
 twt auth login            # auto-extracts cookies from Chrome
-twt user steipete         # view a profile
-twt tweets steipete       # read their tweets
-twt follow steipete       # follow them
-twt search "openclaw"     # search tweets
+twt whoami                # show your profile
 twt timeline --latest     # your chronological feed
+twt post "hello world"    # post a tweet (confirms before posting)
+twt search "openclaw"     # search tweets
+twt user steipete         # view another profile
 ```
 
 ## Authentication
@@ -60,6 +60,13 @@ Credentials are stored at `~/.config/twt/credentials.json` (mode 0600).
 
 ## Commands
 
+### Identity
+
+```sh
+twt whoami                       # show your own profile
+twt auth status                  # show session + stored user ID
+```
+
 ### Profiles
 
 ```sh
@@ -75,18 +82,64 @@ twt tweets steipete --limit 50   # more tweets
 twt tweet 2065650561484267540    # single tweet by ID
 ```
 
-### Follow / Unfollow
+### Post / Delete
+
+```sh
+twt post "hello world"                          # new tweet (confirms)
+twt post "hello world" --yes                    # skip confirmation
+twt post --reply 1234567890 "nice thread"       # reply to a tweet
+twt post --quote 1234567890 "interesting take"  # quote-tweet
+twt delete 1234567890                           # delete (confirms)
+twt delete 1234567890 --yes                     # skip confirmation
+```
+
+### Repost
+
+```sh
+twt repost 1234567890
+twt unrepost 1234567890
+```
+
+### Bookmarks
+
+```sh
+twt bookmarks                    # list your bookmarks
+twt bookmark 1234567890          # save a tweet
+twt unbookmark 1234567890        # remove a bookmark
+```
+
+### Follow / Unfollow / Followers / Following
 
 ```sh
 twt follow steipete
 twt unfollow steipete
+twt followers steipete           # list steipete's followers
+twt following steipete           # list who steipete follows
 ```
 
-### Like / Unlike
+### Like / Unlike / Likes
 
 ```sh
-twt like 2065650561484267540
-twt unlike 2065650561484267540
+twt like 1234567890
+twt unlike 1234567890
+twt likes                        # your liked tweets
+twt likes steipete               # steipete's liked tweets
+```
+
+### Mentions
+
+```sh
+twt mentions                     # your notification timeline
+twt mentions --limit 5
+```
+
+### Moderation
+
+```sh
+twt block someuser
+twt unblock someuser
+twt mute someuser
+twt unmute someuser
 ```
 
 ### Search
@@ -161,18 +214,25 @@ make fmt
 cmd/twt/main.go              # Cobra root, command wiring
 internal/
   api/
-    client.go                # HTTP client, auth headers, jitter, 429 retry
+    client.go                # HTTP client, auth headers, jitter, 429 retry, restGet()
     graphql.go               # GraphQL GET/POST helpers
-    user.go                  # GetUserByScreenNameQuery
+    user.go                  # GetUserByScreenNameQuery, GetUserQuery (by ID)
     tweets.go                # UserProfileOriginalsTimelineQuery
     tweet.go                 # GetPostById
+    post.go                  # CreatePost, CreateReply, CreateQuote, DeletePost
+    repost.go                # CreateRepostMutation, DeleteRepostMutation
+    bookmark.go              # BookmarksTimelineQuery, BookmarkAdd/RemoveMutation
+    relationships.go         # GetFollowers, GetFollowing (REST v1.1)
+    moderation.go            # BlockUser, UnblockUser, MuteUser, UnmuteUser
+    likes.go                 # UserProfileFavoritesTimelineQuery
+    mentions.go              # NotificationTimelineQuery
     follow.go                # FollowUser / UnfollowUser mutations
     like.go                  # FavoriteMutation / UnfavoriteMutation
     search.go                # SearchTimelineQuery
     timeline.go              # HomeTimeline / HomeTimelineLatest
-    verify.go                # v1.1 verify_credentials
+    verify.go                # v1.1 verify_credentials (returns handle + user ID)
   auth/
-    store.go                 # Credential storage (~/.config/twt/)
+    store.go                 # Credential storage (auth_token, ct0, user_id, handle)
     chrome.go                # macOS Chrome cookie extraction (Keychain + AES)
   cmd/                       # Cobra command implementations
   output/output.go           # Human / JSON / plain formatters
