@@ -29,6 +29,7 @@ var ErrCookieNotFound = errors.New("cookie not found in Chrome")
 type ChromeCookies struct {
 	AuthToken string
 	CT0       string
+	UserID    string // numeric user ID from twid cookie (may be empty)
 }
 
 // ExtractFromChrome reads auth_token and ct0 from Chrome's encrypted cookie store.
@@ -66,7 +67,19 @@ func ExtractFromChrome() (*ChromeCookies, error) {
 		return nil, fmt.Errorf("ct0: %w", err)
 	}
 
-	return &ChromeCookies{AuthToken: authToken, CT0: ct0}, nil
+	// Also try to extract twid cookie for user ID.
+	// twid is NOT hex — it's URL-encoded like "u%3D<numeric_id>".
+	// We can't use extractToken (hex-only), so we decrypt raw and find the numeric ID.
+	var userID string
+	var twidEnc []byte
+	err = db.QueryRow(
+		"SELECT encrypted_value FROM cookies WHERE name='twid' AND host_key='.x.com' LIMIT 1",
+	).Scan(&twidEnc)
+	if err == nil && len(twidEnc) > 3 {
+		userID = extractTwidUserID(key, twidEnc)
+	}
+
+	return &ChromeCookies{AuthToken: authToken, CT0: ct0, UserID: userID}, nil
 }
 
 // chromeCookieDBPath returns the path to Chrome's Default profile cookie DB.
@@ -237,4 +250,42 @@ func pkcs7Unpad(data []byte) ([]byte, error) {
 		}
 	}
 	return data[:len(data)-padLen], nil
+}
+
+var numericIDRe = regexp.MustCompile(`\d{15,}`)
+
+// extractTwidUserID decrypts the twid cookie and extracts the numeric user ID.
+// The twid cookie value looks like "u%3D<numeric_id>" after decryption,
+// but the first AES block is garbled. We skip it and find the long numeric ID.
+func extractTwidUserID(key, encrypted []byte) string {
+	if len(encrypted) < 3 {
+		return ""
+	}
+	ciphertext := encrypted[3:] // strip v10
+	if len(ciphertext) < aes.BlockSize {
+		return ""
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return ""
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	for i := range iv {
+		iv[i] = 0x20
+	}
+
+	mode := cipher.NewCBCDecrypter(block, iv)
+	plaintext := make([]byte, len(ciphertext))
+	mode.CryptBlocks(plaintext, ciphertext)
+
+	plaintext, err = pkcs7Unpad(plaintext)
+	if err != nil {
+		return ""
+	}
+
+	// Skip the first garbled block and find a long numeric string (the user ID).
+	match := numericIDRe.FindString(string(plaintext))
+	return match
 }

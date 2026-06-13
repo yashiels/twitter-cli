@@ -33,9 +33,10 @@ func (c *Client) GetBookmarks(limit int) ([]*types.Tweet, error) {
 	}
 
 	// Try multiple response paths — APK response path needs live discovery.
-	instructionsRaw, err := getNestedJSON(raw, "data", "bookmarks_timeline", "timeline", "instructions")
+	// APK schema uses camelCase "timelineResponse"
+	instructionsRaw, err := getNestedJSON(raw, "data", "timelineResponse", "timeline", "instructions")
 	if err != nil {
-		instructionsRaw, err = getNestedJSON(raw, "data", "bookmark_timeline_v2", "timeline", "instructions")
+		instructionsRaw, err = getNestedJSON(raw, "data", "bookmarks_timeline", "timeline", "instructions")
 		if err != nil {
 			instructionsRaw, err = getNestedJSON(raw, "data", "timeline_response", "timeline", "instructions")
 			if err != nil {

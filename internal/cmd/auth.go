@@ -42,7 +42,7 @@ Use --manual to enter cookies interactively instead.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p := output.New(opts)
 
-			var authToken, ct0 string
+			var authToken, ct0, cookieUserID string
 
 			if !manual {
 				p.Infof("Extracting cookies from Chrome...")
@@ -54,6 +54,9 @@ Use --manual to enter cookies interactively instead.`,
 				} else {
 					authToken = cookies.AuthToken
 					ct0 = cookies.CT0
+					if cookies.UserID != "" {
+						cookieUserID = cookies.UserID
+					}
 					p.Infof("Chrome cookies extracted successfully.")
 				}
 			}
@@ -71,10 +74,10 @@ Use --manual to enter cookies interactively instead.`,
 				CT0:       ct0,
 			}
 
-			// Verify credentials by calling the API.
+			// Resolve identity.
 			p.Infof("Verifying credentials...")
 			client := api.NewClient(creds)
-			handle, userID, err := verifyAndGetHandle(client)
+			handle, userID, err := resolveIdentity(client, cookieUserID)
 			if err != nil {
 				return fmt.Errorf("credentials invalid or API error: %w", err)
 			}
@@ -173,15 +176,36 @@ func promptCredentials() (authToken, ct0 string, err error) {
 }
 
 // verifyAndGetHandle calls verify_credentials to get the current user's handle and numeric ID.
-func verifyAndGetHandle(client *api.Client) (handle, userID string, err error) {
+// resolveIdentity gets the user's handle and ID.
+// Priority: twid cookie → GetUserByID → verify_credentials fallback.
+func resolveIdentity(client *api.Client, cookieUserID string) (handle, userID string, err error) {
+	// Best path: we have the numeric ID from the twid cookie.
+	if cookieUserID != "" {
+		user, lookupErr := client.GetUserByID(cookieUserID)
+		if lookupErr == nil && user != nil && user.ScreenName != "" {
+			return user.ScreenName, cookieUserID, nil
+		}
+	}
+
+	// Fallback: try verify_credentials (may fail with cookie auth).
 	h, id, callErr := client.VerifyCredentialsWithID()
-	if callErr != nil {
-		// Fall back to just confirming the API works by checking a known user.
-		_, ferr := client.GetUserByScreenName("twitter")
-		if ferr != nil {
+	if callErr == nil && h != "" {
+		return h, id, nil
+	}
+
+	// Last resort: confirm API works but identity unknown.
+	_, ferr := client.GetUserByScreenName("twitter")
+	if ferr != nil {
+		if callErr != nil {
 			return "", "", fmt.Errorf("API verification failed: %w", callErr)
 		}
-		return "", "", nil // credentials work but we can't get identity
+		return "", "", fmt.Errorf("API verification failed: %w", ferr)
 	}
-	return h, id, nil
+
+	// If we have a cookie user ID but couldn't resolve the handle, store the ID at least.
+	if cookieUserID != "" {
+		return "", cookieUserID, nil
+	}
+
+	return "", "", nil
 }

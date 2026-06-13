@@ -19,16 +19,17 @@ func (c *Client) GetMentions(userID string, limit int) ([]*types.Tweet, error) {
 		limit = 20
 	}
 
-	vars := map[string]any{"userId": userID, "count": limit}
+	vars := map[string]any{"userId": userID, "count": limit, "notificationTimelineType": "All"}
 	raw, err := c.graphqlGet(mentionsQueryID, mentionsOperation, vars, timelineFeatures)
 	if err != nil {
 		return nil, fmt.Errorf("GetMentions: %w", err)
 	}
 
 	// Try multiple response paths — needs live discovery.
-	instructionsRaw, err := getNestedJSON(raw, "data", "notification_timeline", "timeline", "instructions")
+	// APK path: data -> user_result -> result -> timeline_response -> timeline -> instructions
+	instructionsRaw, err := getNestedJSON(raw, "data", "user_result", "result", "timeline_response", "timeline", "instructions")
 	if err != nil {
-		instructionsRaw, err = getNestedJSON(raw, "data", "timeline_response", "timeline", "instructions")
+		instructionsRaw, err = getNestedJSON(raw, "data", "notification_timeline", "timeline", "instructions")
 		if err != nil {
 			return nil, fmt.Errorf("navigate mentions response: %w", err)
 		}
