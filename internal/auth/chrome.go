@@ -29,9 +29,10 @@ var ErrCookieNotFound = errors.New("cookie not found in Chrome")
 type ChromeCookies struct {
 	AuthToken string
 	CT0       string
+	TwID      string // numeric user ID from the twid cookie (format: "u=<id>")
 }
 
-// ExtractFromChrome reads auth_token and ct0 from Chrome's encrypted cookie store.
+// ExtractFromChrome reads auth_token, ct0, and twid from Chrome's encrypted cookie store.
 // Only works on macOS.
 func ExtractFromChrome() (*ChromeCookies, error) {
 	dbPath, err := chromeCookieDBPath()
@@ -66,7 +67,25 @@ func ExtractFromChrome() (*ChromeCookies, error) {
 		return nil, fmt.Errorf("ct0: %w", err)
 	}
 
-	return &ChromeCookies{AuthToken: authToken, CT0: ct0}, nil
+	// twid is not encrypted on some Chrome versions — try both encrypted and plain.
+	twid, _ := queryCookie(db, key, "twid") // non-fatal if missing
+
+	return &ChromeCookies{AuthToken: authToken, CT0: ct0, TwID: twid}, nil
+}
+
+// ParseTwIDUserID extracts the numeric user ID from the twid cookie value.
+// The twid cookie has the format "u=<numeric_id>" (e.g. "u=123456789").
+func ParseTwIDUserID(twid string) string {
+	// Strip "u=" prefix.
+	twid = strings.TrimSpace(twid)
+	if strings.HasPrefix(twid, "u=") {
+		return strings.TrimPrefix(twid, "u=")
+	}
+	// Sometimes URL-encoded: %75%3D<id> or u%3D<id>.
+	if strings.HasPrefix(twid, "u%3D") {
+		return strings.TrimPrefix(twid, "u%3D")
+	}
+	return ""
 }
 
 // chromeCookieDBPath returns the path to Chrome's Default profile cookie DB.

@@ -43,6 +43,7 @@ Use --manual to enter cookies interactively instead.`,
 			p := output.New(opts)
 
 			var authToken, ct0 string
+			var twidUserID string // numeric user ID from the twid cookie
 
 			if !manual {
 				p.Infof("Extracting cookies from Chrome...")
@@ -54,6 +55,10 @@ Use --manual to enter cookies interactively instead.`,
 				} else {
 					authToken = cookies.AuthToken
 					ct0 = cookies.CT0
+					// Extract numeric user ID from twid cookie.
+					if cookies.TwID != "" {
+						twidUserID = auth.ParseTwIDUserID(cookies.TwID)
+					}
 					p.Infof("Chrome cookies extracted successfully.")
 				}
 			}
@@ -74,7 +79,7 @@ Use --manual to enter cookies interactively instead.`,
 			// Verify credentials and resolve identity.
 			p.Infof("Verifying credentials...")
 			client := api.NewClient(creds)
-			identity, err := verifyAndGetIdentity(client)
+			identity, err := verifyAndGetIdentity(client, twidUserID)
 			if err != nil {
 				return fmt.Errorf("credentials invalid or API error: %w", err)
 			}
@@ -186,19 +191,41 @@ type identityResult struct {
 	UserID string
 }
 
-// verifyAndGetIdentity calls verify_credentials to confirm auth and resolve identity.
-func verifyAndGetIdentity(client *api.Client) (*identityResult, error) {
+// verifyAndGetIdentity confirms credentials work and resolves the user's identity.
+// twidUserID is the numeric user ID extracted from the twid Chrome cookie (may be empty).
+func verifyAndGetIdentity(client *api.Client, twidUserID string) (*identityResult, error) {
+	// Try verify_credentials first — returns handle + numeric ID.
 	result, err := client.VerifyCredentials()
-	if err != nil {
-		// Fall back to confirming API works by checking a known user.
-		_, ferr := client.GetUserByScreenName("twitter")
-		if ferr != nil {
-			return nil, fmt.Errorf("API verification failed: %w", err)
-		}
-		return &identityResult{}, nil // credentials work but we can't get identity
+	if err == nil && (result.ScreenName != "" || result.UserID != "") {
+		return &identityResult{
+			Handle: result.ScreenName,
+			UserID: result.UserID,
+		}, nil
 	}
-	return &identityResult{
-		Handle: result.ScreenName,
-		UserID: result.UserID,
-	}, nil
+
+	// verify_credentials failed or returned empty — use twid cookie ID if available.
+	userID := twidUserID
+	if userID == "" && result != nil {
+		userID = result.UserID
+	}
+
+	if userID != "" {
+		// Resolve handle from numeric ID via GraphQL.
+		user, userErr := client.GetUserByID(userID)
+		if userErr == nil && user != nil {
+			return &identityResult{
+				Handle: user.ScreenName,
+				UserID: userID,
+			}, nil
+		}
+		// ID resolved but handle lookup failed — still store the ID.
+		return &identityResult{UserID: userID}, nil
+	}
+
+	// Fall back to confirming the API works by checking a known user.
+	_, ferr := client.GetUserByScreenName("twitter")
+	if ferr != nil {
+		return nil, fmt.Errorf("API verification failed: %w", err)
+	}
+	return &identityResult{}, nil // credentials work but identity unknown
 }
