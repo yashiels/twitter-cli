@@ -42,6 +42,9 @@ func NewBlockCmd(opts *output.Options) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("lookup user: %w", err)
 			}
+			if user.RestID == "" {
+				return fmt.Errorf("could not resolve numeric user ID for @%s", handle)
+			}
 
 			p.Infof("Blocking @%s...", handle)
 			if err := client.BlockUser(user.RestID); err != nil {
@@ -82,6 +85,9 @@ func NewUnblockCmd(opts *output.Options) *cobra.Command {
 			}
 			if err != nil {
 				return fmt.Errorf("lookup user: %w", err)
+			}
+			if user.RestID == "" {
+				return fmt.Errorf("could not resolve numeric user ID for @%s", handle)
 			}
 
 			p.Infof("Unblocking @%s...", handle)
@@ -124,6 +130,9 @@ func NewMuteCmd(opts *output.Options) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("lookup user: %w", err)
 			}
+			if user.RestID == "" {
+				return fmt.Errorf("could not resolve numeric user ID for @%s", handle)
+			}
 
 			p.Infof("Muting @%s...", handle)
 			if err := client.MuteUser(user.RestID); err != nil {
@@ -164,6 +173,9 @@ func NewUnmuteCmd(opts *output.Options) *cobra.Command {
 			}
 			if err != nil {
 				return fmt.Errorf("lookup user: %w", err)
+			}
+			if user.RestID == "" {
+				return fmt.Errorf("could not resolve numeric user ID for @%s", handle)
 			}
 
 			p.Infof("Unmuting @%s...", handle)

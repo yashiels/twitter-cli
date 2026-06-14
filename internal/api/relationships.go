@@ -50,6 +50,12 @@ func (c *Client) GetFollowing(handle string, limit int) ([]*types.User, error) {
 // parseRESTUsersResponse parses a REST v1.1 users list response.
 // Response shape: {"users": [...], "next_cursor_str": "..."}
 func parseRESTUsersResponse(raw json.RawMessage) ([]*types.User, error) {
+	// restGet returns "[]" when Twitter sends a 200 with an empty body.
+	// That is not a valid users-list object, but it means "zero results".
+	if string(raw) == "[]" || string(raw) == "{}" {
+		return nil, nil
+	}
+
 	var resp struct {
 		Users []json.RawMessage `json:"users"`
 	}
