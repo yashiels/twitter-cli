@@ -241,6 +241,12 @@ func (p *Printer) printTweetsHuman(tweets []*types.Tweet) error {
 		if t.ReplyCount > 0 {
 			stats = append(stats, "💬 "+bold.Sprint(formatCount(t.ReplyCount)))
 		}
+		if t.QuoteCount > 0 {
+			stats = append(stats, "❝ "+bold.Sprint(formatCount(t.QuoteCount)))
+		}
+		if t.BookmarkCount > 0 {
+			stats = append(stats, "🔖 "+bold.Sprint(formatCount(t.BookmarkCount)))
+		}
 		if t.ViewCount > 0 {
 			stats = append(stats, dim.Sprint("👁 "+formatCount(t.ViewCount)))
 		}
@@ -268,6 +274,8 @@ func (p *Printer) printTweetsPlain(tweets []*types.Tweet) error {
 			fmt.Sprintf("%d", t.FavoriteCount),
 			fmt.Sprintf("%d", t.RetweetCount),
 			fmt.Sprintf("%d", t.ReplyCount),
+			fmt.Sprintf("%d", t.QuoteCount),
+			fmt.Sprintf("%d", t.BookmarkCount),
 			fmt.Sprintf("%d", t.ViewCount),
 			t.URL,
 		}

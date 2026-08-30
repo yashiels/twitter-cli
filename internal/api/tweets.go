@@ -4,10 +4,37 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yashiels/twitter-cli/internal/types"
 )
+
+// flexInt64 tolerates a JSON value that is either a bare number or a numeric
+// string. The APK and web schemas are inconsistent: fields like views.count and
+// details.created_at_ms have been observed both as quoted strings and as bare
+// integers. A single field-type variance must never discard the whole tweet, so
+// we accept either form (and treat null/empty/unparseable as zero).
+type flexInt64 int64
+
+func (f *flexInt64) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
+	if s == "" || s == "null" {
+		*f = 0
+		return nil
+	}
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		*f = flexInt64(n)
+		return nil
+	}
+	// Tolerate float-like or otherwise odd values rather than dropping the tweet.
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		*f = flexInt64(v)
+		return nil
+	}
+	*f = 0
+	return nil
+}
 
 const (
 	tweetsQueryID   = "xlAB_H3dvYL4q1C-PzM_ag"
@@ -54,10 +81,10 @@ type rawTweetResult struct {
 
 	// APK schema: tweet details (text, date)
 	Details struct {
-		FullText             string `json:"full_text"`
-		CreatedAtMs          int64  `json:"created_at_ms"`
-		InReplyToScreenName  string `json:"in_reply_to_screen_name"`
-		RetweetedStatusIDStr string `json:"retweeted_status_id_str"`
+		FullText             string    `json:"full_text"`
+		CreatedAtMs          flexInt64 `json:"created_at_ms"`
+		InReplyToScreenName  string    `json:"in_reply_to_screen_name"`
+		RetweetedStatusIDStr string    `json:"retweeted_status_id_str"`
 	} `json:"details"`
 
 	// APK schema: engagement counts
@@ -79,7 +106,7 @@ type rawTweetResult struct {
 	} `json:"note_tweet"`
 
 	Views struct {
-		Count string `json:"count"`
+		Count flexInt64 `json:"count"`
 	} `json:"views"`
 
 	Core struct {
@@ -102,6 +129,8 @@ type rawTweetResult struct {
 		FavoriteCount        int    `json:"favorite_count"`
 		RetweetCount         int    `json:"retweet_count"`
 		ReplyCount           int    `json:"reply_count"`
+		QuoteCount           int    `json:"quote_count"`
+		BookmarkCount        int    `json:"bookmark_count"`
 		InReplyToScreenName  string `json:"in_reply_to_screen_name"`
 		RetweetedStatusIDStr string `json:"retweeted_status_id_str"`
 	} `json:"legacy"`
@@ -158,30 +187,59 @@ func parseTimelineInstructions(instructionsRaw json.RawMessage) ([]*types.Tweet,
 		}
 
 		for _, entry := range entries {
-			t, err := parseTimelineEntry(entry)
-			if err != nil || t == nil {
+			ts, err := parseTimelineEntry(entry)
+			if err != nil || len(ts) == 0 {
 				continue
 			}
-			tweets = append(tweets, t)
+			tweets = append(tweets, ts...)
 		}
 	}
 
 	return tweets, nil
 }
 
-// parseTimelineEntry extracts a Tweet from a timeline entry.
-func parseTimelineEntry(entry json.RawMessage) (*types.Tweet, error) {
-	// Structure: entry -> content -> content -> tweet_results -> result
+// parseTimelineEntry extracts zero or more Tweets from a timeline entry.
+// A plain entry yields a single tweet; a TimelineTimelineModule entry (threads,
+// clusters, conversations) carries several under content.items[] which must not
+// be silently dropped.
+func parseTimelineEntry(entry json.RawMessage) ([]*types.Tweet, error) {
+	// Single tweet: entry -> content -> content -> tweet_results -> result
 	tweetResultRaw, err := getNestedJSON(entry, "content", "content", "tweet_results", "result")
 	if err != nil {
-		// Try alternate: entry -> content -> itemContent -> tweet_results -> result
+		// Alternate single tweet: entry -> content -> itemContent -> tweet_results -> result
 		tweetResultRaw, err = getNestedJSON(entry, "content", "itemContent", "tweet_results", "result")
-		if err != nil {
-			return nil, nil // not a tweet entry
+	}
+	if err == nil {
+		t, perr := parseTweetResult(tweetResultRaw)
+		if perr != nil || t == nil {
+			return nil, perr
 		}
+		return []*types.Tweet{t}, nil
 	}
 
-	return parseTweetResult(tweetResultRaw)
+	// Module entry (TimelineTimelineModule):
+	// entry -> content -> items[] -> item -> itemContent -> tweet_results -> result
+	itemsRaw, err := getNestedJSON(entry, "content", "items")
+	if err != nil {
+		return nil, nil // not a tweet entry
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(itemsRaw, &items); err != nil {
+		return nil, nil
+	}
+	var tweets []*types.Tweet
+	for _, it := range items {
+		resRaw, err := getNestedJSON(it, "item", "itemContent", "tweet_results", "result")
+		if err != nil {
+			continue
+		}
+		t, err := parseTweetResult(resRaw)
+		if err != nil || t == nil {
+			continue
+		}
+		tweets = append(tweets, t)
+	}
+	return tweets, nil
 }
 
 // parseTweetResult converts a raw tweet result JSON into a Tweet.
@@ -220,7 +278,7 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 	// Date: APK uses details.created_at_ms (Unix millis), web uses legacy.created_at (RFC)
 	var createdAt time.Time
 	if r.Details.CreatedAtMs > 0 {
-		createdAt = time.UnixMilli(r.Details.CreatedAtMs)
+		createdAt = time.UnixMilli(int64(r.Details.CreatedAtMs))
 	} else if r.Legacy.CreatedAt != "" {
 		parsed, err := time.Parse("Mon Jan 02 15:04:05 +0000 2006", r.Legacy.CreatedAt)
 		if err == nil {
@@ -229,10 +287,7 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 	}
 
 	// View count
-	var viewCount int
-	if r.Views.Count != "" {
-		viewCount, _ = strconv.Atoi(r.Views.Count)
-	}
+	viewCount := int(r.Views.Count)
 
 	// Author handle
 	handle := r.Core.UserResults.Result.Core.ScreenName
@@ -244,6 +299,8 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 	favCount := r.Counts.FavoriteCount
 	rtCount := r.Counts.RetweetCount
 	replyCount := r.Counts.ReplyCount
+	quoteCount := r.Counts.QuoteCount
+	bookmarkCount := r.Counts.BookmarkCount
 	if favCount == 0 && r.Legacy.FavoriteCount > 0 {
 		favCount = r.Legacy.FavoriteCount
 	}
@@ -252,6 +309,12 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 	}
 	if replyCount == 0 && r.Legacy.ReplyCount > 0 {
 		replyCount = r.Legacy.ReplyCount
+	}
+	if quoteCount == 0 && r.Legacy.QuoteCount > 0 {
+		quoteCount = r.Legacy.QuoteCount
+	}
+	if bookmarkCount == 0 && r.Legacy.BookmarkCount > 0 {
+		bookmarkCount = r.Legacy.BookmarkCount
 	}
 
 	// Reply/retweet detection: APK uses details.*, web uses legacy.*
@@ -265,6 +328,8 @@ func convertRawTweet(r *rawTweetResult) *types.Tweet {
 		FavoriteCount: favCount,
 		RetweetCount:  rtCount,
 		ReplyCount:    replyCount,
+		QuoteCount:    quoteCount,
+		BookmarkCount: bookmarkCount,
 		ViewCount:     viewCount,
 		AuthorHandle:  handle,
 		IsRetweet:     isRetweet,

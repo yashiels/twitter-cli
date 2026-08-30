@@ -10,6 +10,8 @@ type Tweet struct {
 	FavoriteCount int       `json:"favorite_count"`
 	RetweetCount  int       `json:"retweet_count"`
 	ReplyCount    int       `json:"reply_count"`
+	QuoteCount    int       `json:"quote_count"`
+	BookmarkCount int       `json:"bookmark_count"`
 	ViewCount     int       `json:"view_count"`
 	AuthorHandle  string    `json:"author_handle"`
 	URL           string    `json:"url"`
