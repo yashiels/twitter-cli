@@ -30,10 +30,10 @@ jobs:
     steps:
       - name: Trigger tap formula update
         env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           curl -s -X POST \
-            -H "Authorization: token $TAP_TOKEN" \
+            -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/yashiels/homebrew-tap/actions/workflows/update-formula.yml/dispatches" \
             -d '{
