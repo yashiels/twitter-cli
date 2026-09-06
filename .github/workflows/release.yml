@@ -28,21 +28,53 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger tap formula update
+      - name: Resolve release tag
+        run: echo "RELEASE_TAG=${{ github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Dispatch tap formula update
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          curl -s -X POST \
-            -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/yashiels/homebrew-tap/actions/workflows/update-formula.yml/dispatches" \
-            -d '{
-              "ref": "main",
-              "inputs": {
-                "formula": "twt",
-                "tag": "${{ github.ref_name }}",
-                "repository": "yashiels/twitter-cli",
-                "description": "X/Twitter from the terminal — built on the private GraphQL API",
-                "artifact_template": "twitter-cli_{version}_{target}.tar.gz"
-              }
-            }'
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set HOMEBREW_TAP_TOKEN with workflow access to yashiels/homebrew-tap"
+            exit 1
+          fi
+
+          request_id="twt-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          expected_title="Update twt for ${RELEASE_TAG} (${request_id})"
+
+          gh workflow run update-formula.yml \
+            --repo yashiels/homebrew-tap \
+            --ref main \
+            -f formula=twt \
+            -f tag="$RELEASE_TAG" \
+            -f repository=yashiels/twitter-cli \
+            -f description="X/Twitter from the terminal — built on the private GraphQL API" \
+            -f artifact_template="twitter-cli_{version}_{target}.tar.gz" \
+            -f request_id="$request_id"
+
+          run_id=""
+          for _ in {1..30}; do
+            run_id=$(gh run list \
+              --repo yashiels/homebrew-tap \
+              --workflow update-formula.yml \
+              --branch main \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,displayTitle \
+              --jq ".[] | select(.displayTitle == \"$expected_title\") | .databaseId" | head -n1)
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ -z "$run_id" ]; then
+            echo "::error::Could not find tap workflow run with title: $expected_title"
+            exit 1
+          fi
+
+          gh run watch "$run_id" \
+            --repo yashiels/homebrew-tap \
+            --exit-status \
+            --interval 10
