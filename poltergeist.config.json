@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "projectType": "go",
+  "projectType": "mixed",
   "targets": [
     {
       "name": "twt",
