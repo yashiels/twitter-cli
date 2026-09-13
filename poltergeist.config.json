@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "projectType": "go",
+  "targets": [
+    {
+      "name": "twt",
+      "type": "executable",
+      "enabled": true,
+      "buildCommand": "make build",
+      "outputPath": "./twt",
+      "watchPaths": ["**/*.go", "go.mod", "go.sum", "Makefile"]
+    }
+  ]
+}
